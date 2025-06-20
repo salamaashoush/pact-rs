@@ -53,4 +53,10 @@ allow-newer: servant-client:*
 allow-newer: servant:*
 allow-newer: tasty-wai:*
 
+-- Ensure OpenSSL 3.0 compatibility
+constraints: 
+  memory >= 0.18,
+  hashes >= 0.3,
+  crypton >= 1.0
+
 tests: True

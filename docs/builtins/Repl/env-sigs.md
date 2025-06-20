@@ -31,7 +31,7 @@ The following example illustrates using the `env-sigs` function to sign a transa
 "Setting transaction signatures/caps"
 ```
 
-The following example demonstrates how to use the `env-sigs` function to set transaction signatures and capabilities for two keys—"my-test-key" and "admin-key"—without using any public keys in the Pact REPL:
+The following example demonstrates how to use the `env-sigs` function to set transaction signatures and capabilities for two keys-"my-test-key" and "admin-key"-without using any public keys in the Pact REPL:
 
 ```pact
 (env-sigs [

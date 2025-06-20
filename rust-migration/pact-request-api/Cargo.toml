@@ -1,0 +1,50 @@
+[package]
+name = "pact-request-api"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Public API interface for Pact - the primary interface for downstream users"
+
+[dependencies]
+# Core Pact dependencies (only what's needed for public API)
+pact-values = { path = "../pact-values" }
+pact-crypto = { path = "../pact-crypto" }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Error handling
+anyhow = "1.0"
+thiserror = { workspace = true }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# HTTP client for testing
+reqwest = { version = "0.11", features = ["json"] }
+
+# String handling
+hex = "0.4"
+
+# Math types
+num-bigint = { version = "0.4", features = ["serde"] }
+num-rational = { version = "0.4", features = ["serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID for request keys
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Random number generation
+rand = "0.8"
+
+[dev-dependencies]
+proptest = { workspace = true }
+tokio-test = "0.4"

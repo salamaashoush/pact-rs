@@ -10,11 +10,11 @@ The following table provides a summary of the most common time formatting codes:
 | Format | Purpose |
 | --- | --- |
 | %Y | Year with no padding. |
-| %m | Month of the year, zero-padded to two characters, "01"–"12" |
-| %d | Day of the month, zero-padded to two characters, "01"–"31" |
-| %H | Hour of the day using a 24-hour clock, zero-padded to two characters, "00"–"23" |
-| %M | Minute of of the hour, zero-padded to two characters, "00"–"59" |
-| %S | Second of the minute, zero-padded to two characters, "00"–"60" |
+| %m | Month of the year, zero-padded to two characters, "01"-"12" |
+| %d | Day of the month, zero-padded to two characters, "01"-"31" |
+| %H | Hour of the day using a 24-hour clock, zero-padded to two characters, "00"-"23" |
+| %M | Minute of of the hour, zero-padded to two characters, "00"-"59" |
+| %S | Second of the minute, zero-padded to two characters, "00"-"60" |
 
 Note that two percentage characters (`%%`) are interpreted as a literal percentage sign (`%`), not a time formatting template.
 

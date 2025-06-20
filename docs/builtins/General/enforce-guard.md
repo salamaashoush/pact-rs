@@ -39,7 +39,7 @@ The following example demonstrates using the keyset guard named `admin-keyset` t
 
 In most cases, you use `enforce-guard` in the context of contract logic to ensure a specific condition is `true` before allowing a specific operation to be executed. 
 For example, you might have logic to validate a sender account before allowing a transfer operation.
-You can then call the `enforce-guard` to ensure the sender meets the specified conditions—returning `true` as a result—before executing further logic:
+You can then call the `enforce-guard` to ensure the sender meets the specified conditions-returning `true` as a result-before executing further logic:
 
 ```pact
 (enforce-guard sender-guard)

@@ -1,0 +1,38 @@
+# Clippy configuration for Pact
+# Focused on performance, correctness, and parser/interpreter best practices
+
+# Maximum cognitive complexity for functions (parser functions can be complex)
+cognitive-complexity-threshold = 40
+
+# Maximum number of lines in a function
+too-many-lines-threshold = 100
+
+# Maximum number of arguments to a function
+too-many-arguments-threshold = 7
+
+# Maximum nesting level (parsers often have deep nesting)
+excessive-nesting-threshold = 7
+
+# Type complexity threshold (important for AST types)
+type-complexity-threshold = 400
+
+# Maximum number of single char binding names
+single-char-binding-names-threshold = 4
+
+# Enforce documentation
+missing-docs-in-crate-items = true
+
+# Note: Disallowed types and methods disabled during development
+# Will re-enable for production code review
+
+# Maximum size for enum variants before warning
+enum-variant-size-threshold = 200
+
+# Avoid common footguns
+avoid-breaking-exported-api = false
+
+# Stack size threshold
+stack-size-threshold = 512000
+
+# Trivial copy size limit
+trivial-copy-size-limit = 32

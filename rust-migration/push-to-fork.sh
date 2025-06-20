@@ -1,0 +1,21 @@
+#!/bin/bash
+# Script to push the Rust migration to the forked repository
+
+echo "This script will help you push the Rust migration to your forked repository."
+echo "Please run these commands in a separate terminal:"
+echo ""
+echo "# 1. Clone your forked repository"
+echo "git clone https://github.com/salamaashoush/pact-rs.git"
+echo "cd pact-rs"
+echo ""
+echo "# 2. Copy the rust-migration directory"
+echo "cp -r /home/salama/Workspace/Kadena/pact-5/rust-migration/* ."
+echo "cp -r /home/salama/Workspace/Kadena/pact-5/rust-migration/.* . 2>/dev/null || true"
+echo ""
+echo "# 3. Initialize git and push"
+echo "git add ."
+echo "git commit -m 'Initial Rust project structure'"
+echo "git push origin main"
+echo ""
+echo "# 4. Make the repository private (using gh CLI)"
+echo "gh repo edit salamaashoush/pact-rs --visibility private"

@@ -1,0 +1,24 @@
+# Rust toolchain configuration for Pact
+# Ensures consistent Rust version across all developers
+
+[toolchain]
+# Use stable Rust 1.87
+channel = "1.87"
+# Components to install
+components = [
+    "rustfmt",
+    "clippy",
+    "rust-analyzer",
+    "rust-src",
+    "rustc-dev",
+    "llvm-tools",
+]
+# Compilation targets (add more as needed)
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "wasm32-unknown-unknown",
+]
+# Use the specified toolchain for this project
+profile = "default"

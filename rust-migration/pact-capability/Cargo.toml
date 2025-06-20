@@ -1,0 +1,30 @@
+[package]
+name = "pact-capability"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Capability-based security system for Pact"
+
+[dependencies]
+pact-values = { path = "../pact-values" }
+pact-errors = { path = "../pact-errors" }
+pact-names = { path = "../pact-names" }
+pact-schema = { path = "../pact-schema" }
+pact-shared-types = { path = "../pact-shared-types" }
+compact_str = { version = "0.8.1", features = ["serde"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

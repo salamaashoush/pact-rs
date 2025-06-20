@@ -33,7 +33,7 @@ pact> (commit-tx)
 "Commit Tx 0: load module"
 ```
 
-In this example, a new transaction—Tx0—is started using `(begin-tx)`, and then `(commit-tx)` is called to commit the transaction. 
+In this example, a new transaction-Tx0-is started using `(begin-tx)`, and then `(commit-tx)` is called to commit the transaction. 
 The function returns a string indicating that "Tx 0" has been committed.
 
 Note that you should only call the `commit-tx` function after performing the necessary operations within a transaction. 

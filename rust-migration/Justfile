@@ -1,0 +1,344 @@
+# Pact Rust Implementation - Build System
+# Run `just --list` to see available commands
+# Run `just --choose` for interactive command selection
+
+# Load environment variables
+set dotenv-load := true
+
+# Set shell for recipes
+set shell := ["bash", "-uc"]
+
+# Colors for output
+export YELLOW := '\033[1;33m'
+export GREEN := '\033[1;32m'
+export RED := '\033[1;31m'
+export NC := '\033[0m' # No Color
+
+# Default recipe - show available commands
+default:
+    @echo -e "${GREEN}Pact Rust Development Commands${NC}"
+    @echo -e "${YELLOW}Run 'just --list' to see all available commands${NC}"
+    @echo -e "${YELLOW}Run 'just --choose' for interactive selection${NC}"
+    @just --list
+
+# ================================
+# Setup and Installation
+# ================================
+
+# Initial project setup
+setup:
+    @echo -e "${YELLOW}Setting up Pact Rust development environment...${NC}"
+    cargo --version || (echo "Please install Rust first" && exit 1)
+    cargo install cargo-nextest || true
+    cargo install cargo-watch || true
+    cargo install cargo-audit || true
+    cargo install cargo-machete || true
+    cargo install cargo-expand || true
+    cargo install cargo-bloat || true
+    cargo install flamegraph || true
+    cargo install just || true
+    pre-commit install || true
+    @echo -e "${GREEN}Setup complete!${NC}"
+
+# Install all development tools
+install-tools:
+    cargo install cargo-watch cargo-nextest cargo-audit cargo-flamegraph cargo-machete cargo-expand cargo-bloat just pre-commit
+
+# ================================
+# Building
+# ================================
+
+# Build all crates (development)
+build:
+    @echo -e "${YELLOW}Building all crates...${NC}"
+    cargo build --all-features
+
+# Build in release mode
+build-release:
+    @echo -e "${YELLOW}Building release...${NC}"
+    cargo build --release --all-features
+
+# Build with performance profile
+build-perf:
+    @echo -e "${YELLOW}Building with performance optimizations...${NC}"
+    cargo build --profile perf
+
+# Build specific crate
+build-crate crate:
+    @echo -e "${YELLOW}Building {{crate}}...${NC}"
+    cargo build -p {{crate}} --all-features
+
+# ================================
+# Testing
+# ================================
+
+# Run all tests
+test:
+    @echo -e "${YELLOW}Running all tests...${NC}"
+    @if command -v cargo-nextest &> /dev/null; then cargo nextest run --all-features; else cargo test --all-features; fi
+
+# Run tests with standard test runner (for doctest support)
+test-std:
+    cargo test --all-features
+
+# Test specific crate
+test-crate crate:
+    @echo -e "${YELLOW}Testing {{crate}}...${NC}"
+    @if command -v cargo-nextest &> /dev/null; then cargo nextest run -p {{crate}}; else cargo test -p {{crate}}; fi
+
+# Test parser and lexer
+test-parser:
+    @echo -e "${YELLOW}Testing parser and lexer...${NC}"
+    @if command -v cargo-nextest &> /dev/null; then cargo nextest run -p pact-parser -p pact-lexer; else cargo test -p pact-parser -p pact-lexer; fi
+
+# Test evaluator and builtins
+test-eval:
+    @echo -e "${YELLOW}Testing evaluator and builtins...${NC}"
+    @if command -v cargo-nextest &> /dev/null; then cargo nextest run -p pact-eval -p pact-builtins; else cargo test -p pact-eval -p pact-builtins; fi
+
+# Run integration tests only
+test-integration:
+    cargo test --test '*' --all-features
+
+# Run doc tests only
+test-doc:
+    cargo test --doc --all-features
+
+# Run specific test with output
+test-one test:
+    cargo nextest run {{test}} --nocapture
+
+# ================================
+# Code Quality
+# ================================
+
+# Format all code
+fmt:
+    @echo -e "${YELLOW}Formatting code...${NC}"
+    cargo fmt --all
+
+# Check formatting
+fmt-check:
+    @echo -e "${YELLOW}Checking formatting...${NC}"
+    cargo fmt --all -- --check
+
+# Run clippy lints (development mode - lenient)
+lint:
+    @echo -e "${YELLOW}Running clippy...${NC}"
+    cargo clippy --all-targets --all-features -- -W clippy::all -A clippy::cargo-common-metadata -A clippy::unwrap-used -A clippy::expect-used -A clippy::uninlined-format-args -A clippy::missing-docs-in-private-items -A clippy::should-implement-trait -A clippy::inherent-to-string-shadow-display -A clippy::assign-op-pattern -A clippy::if-same-then-else -A clippy::needless-borrows-for-generic-args -A clippy::missing-const-for-fn -A clippy::use-self -A clippy::derive-partial-eq-without-eq -A clippy::unwrap-or-default
+
+# Run clippy and auto-fix
+fix:
+    @echo -e "${YELLOW}Auto-fixing clippy warnings...${NC}"
+    cargo clippy --fix --allow-dirty --allow-staged --all-features
+
+# Run strict clippy (production ready)
+lint-strict:
+    cargo clippy --all-targets --all-features -- -D warnings
+
+# Check for common security issues
+audit:
+    @echo -e "${YELLOW}Checking for security vulnerabilities...${NC}"
+    cargo audit
+
+# Find unused dependencies
+unused-deps:
+    @echo -e "${YELLOW}Checking for unused dependencies...${NC}"
+    cargo machete
+
+# ================================
+# Performance Analysis
+# ================================
+
+# Run all benchmarks
+bench:
+    @echo -e "${YELLOW}Running benchmarks...${NC}"
+    cargo bench --all-features
+
+# Run parser benchmarks
+bench-parser:
+    cargo bench --bench parser_bench
+
+# Run interpreter benchmarks  
+bench-interpreter:
+    cargo bench --bench interpreter_bench
+
+# Compare benchmark results
+bench-compare:
+    cargo bench --all-features -- --baseline
+
+# Generate flamegraph
+flamegraph:
+    @echo -e "${YELLOW}Generating flamegraph...${NC}"
+    cargo flamegraph --bin pact-cli -- repl
+
+# Analyze binary size
+bloat:
+    @echo -e "${YELLOW}Analyzing binary size...${NC}"
+    cargo bloat --release --crates
+
+# Show assembly for a function
+asm func:
+    cargo asm -p pact-eval {{func}}
+
+# ================================
+# Development Workflows
+# ================================
+
+# Watch for changes and run tests
+watch:
+    cargo watch -x 'nextest run' -x 'clippy --all-features'
+
+# Watch parser changes
+watch-parser:
+    cargo watch -x 'check -p pact-parser -p pact-lexer' \
+                -x 'nextest run -p pact-parser -p pact-lexer'
+
+# Watch and run specific command
+watch-cmd cmd:
+    cargo watch -x '{{cmd}}'
+
+# Open documentation
+doc:
+    @echo -e "${YELLOW}Building and opening documentation...${NC}"
+    cargo doc --all-features --no-deps --open
+
+# Build docs with private items
+doc-private:
+    cargo doc --all-features --no-deps --document-private-items --open
+
+# ================================
+# CI Simulation
+# ================================
+
+# Run all CI checks
+ci: fmt-check lint test test-doc audit
+    @echo -e "${GREEN}All CI checks passed!${NC}"
+
+# Quick CI checks (no audit)
+ci-fast: check lint test
+    @echo -e "${GREEN}Fast CI checks passed!${NC}"
+
+# Just check if everything compiles
+check:
+    @echo -e "${YELLOW}Checking all targets...${NC}"
+    cargo check --all-targets --all-features
+
+# ================================
+# Workspace Management
+# ================================
+
+# Show dependency tree
+tree:
+    cargo tree --all-features
+
+# Show dependency tree for specific crate
+tree-crate crate:
+    cargo tree -p {{crate}}
+
+# Update dependencies
+update:
+    @echo -e "${YELLOW}Updating dependencies...${NC}"
+    cargo update
+
+# Clean build artifacts
+clean:
+    @echo -e "${YELLOW}Cleaning build artifacts...${NC}"
+    cargo clean
+
+# Deep clean (including Cargo.lock)
+clean-all:
+    @echo -e "${YELLOW}Deep cleaning...${NC}"
+    cargo clean
+    rm -f Cargo.lock
+
+# ================================
+# Release Management
+# ================================
+
+# Build optimized release
+release:
+    @echo -e "${YELLOW}Building optimized release...${NC}"
+    RUSTFLAGS="-C target-cpu=native" cargo build --release --all-features
+
+# Check minimal versions
+min-versions:
+    cargo +nightly generate-lockfile -Z minimal-versions
+    cargo check --all-features --all-targets
+
+# Create a new crate
+new-crate name:
+    cargo new --lib pact-{{name}}
+    @echo "Don't forget to add 'pact-{{name}}' to workspace members in Cargo.toml"
+
+# ================================
+# REPL and CLI
+# ================================
+
+# Run the Pact REPL
+repl:
+    @echo -e "${YELLOW}Starting Pact REPL...${NC}"
+    cargo run --bin pact-cli -- repl
+
+# Run Pact CLI with arguments
+run *args:
+    cargo run --bin pact-cli -- {{args}}
+
+# Install Pact CLI locally
+install:
+    cargo install --path pact-cli
+
+# ================================
+# Utilities
+# ================================
+
+# Count lines of code
+loc:
+    @tokei --exclude target --exclude '*.lock'
+
+# Show TODO/FIXME comments
+todos:
+    @rg -i "todo|fixme|hack|xxx" --type rust
+
+# Run pre-commit hooks
+pre-commit:
+    pre-commit run --all-files
+
+# Update pre-commit hooks
+pre-commit-update:
+    pre-commit autoupdate
+
+# ================================
+# Composite Commands
+# ================================
+
+# Run all checks before committing
+ready: fmt lint test
+    @echo -e "${GREEN}Ready to commit!${NC}"
+
+# Full check (format, lint, test, audit)
+check-all: fmt-check lint test audit
+
+# Fix all auto-fixable issues
+fix-all: fmt fix
+
+# ================================
+# Help and Info
+# ================================
+
+# Show environment info
+info:
+    @echo -e "${GREEN}Environment Info:${NC}"
+    @echo "Rust version: $(rustc --version)"
+    @echo "Cargo version: $(cargo --version)"
+    @echo "Target: $(rustc -vV | grep host | cut -d' ' -f2)"
+
+# List all crates in workspace
+list-crates:
+    @echo -e "${GREEN}Workspace crates:${NC}"
+    @cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | sort
+
+# Show crate graph
+graph:
+    cargo depgraph --all-deps | dot -Tpng > target/deps.png
+    @echo -e "${GREEN}Dependency graph saved to target/deps.png${NC}"

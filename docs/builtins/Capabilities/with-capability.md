@@ -1,7 +1,7 @@
 ## with-capability
 
 Use `with-capability` to apply the access to a specific capability to execute a body of code.
-This function ensures that an elevated privilege—defined as a capability using a `defcap` code block—is present during the execution of the provided body of code. 
+This function ensures that an elevated privilege-defined as a capability using a `defcap` code block-is present during the execution of the provided body of code. 
 
 You can only call the `with-capability` function in the same module that contains the corresponding `defcap` declaration. 
 If the token that grants permission to use the specified capability isn't found, the `with-capability`  evaluates the capability definition to install or grant the permission token. 

@@ -1,0 +1,51 @@
+[package]
+name = "pact-lsp"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Language Server Protocol implementation for Pact"
+
+[dependencies]
+# Core Pact dependencies
+pact-compiler = { path = "../pact-compiler" }
+pact-eval = { path = "../pact-eval" } # For type checking only
+pact-parser = { path = "../pact-parser" }
+pact-lexer = { path = "../pact-lexer" }
+pact-values = { path = "../pact-values" }
+pact-errors = { path = "../pact-errors" }
+# pact-builtins = { path = "../pact-builtins" } # Removed - builtins are in pact-cek now
+pact-modules = { path = "../pact-modules" }
+pact-schema = { path = "../pact-schema" }
+
+# LSP support
+tower-lsp = "0.20"
+lsp-types = "0.95"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Error handling
+anyhow = "1.0"
+thiserror = { workspace = true }
+
+# Text utilities
+ropey = "1.6" # Efficient rope data structure for text
+dashmap = "5.5" # Concurrent HashMap
+
+# File watching
+notify = "6.1"
+
+[dev-dependencies]
+tower-lsp = "0.20"
+tokio-test = "0.4"

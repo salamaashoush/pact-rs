@@ -1,0 +1,28 @@
+;; REPL script for testing simple operations
+;; Comments should be ignored
+
+;; Basic arithmetic
+(+ 1 2)
+(* 3 4)
+
+;; String concatenation  
+(+ "hello" " world")
+
+;; Boolean logic
+(and true true)
+(or false true)
+
+;; Variables
+(let ((x 5)) (* x x))
+
+;; Conditional
+(if (> 5 3) "greater" "lesser")
+
+;; Load another file
+.load numbers.pact
+
+;; Reset state
+.reset
+
+;; Test after reset
+(+ 100 200)

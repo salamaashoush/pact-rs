@@ -1,0 +1,8 @@
+;; REPL script for arithmetic testing
+(+ 1 2)
+(- 10 3)
+(* 4 5)
+(/ 20 4)
+(and true false)
+(or true false)
+(not true)

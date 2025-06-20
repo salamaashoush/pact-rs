@@ -1,0 +1,38 @@
+[package]
+name = "pact-db"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "TODO: Add description for pact-db"
+
+[dependencies]
+pact-values = { path = "../pact-values" }
+pact-errors = { path = "../pact-errors" }
+pact-schema = { path = "../pact-schema" }
+pact-names = { path = "../pact-names" }
+pact-shared-types = { path = "../pact-shared-types" }
+pact-ir = { path = "../pact-ir" }
+compact_str = "0.8.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+indexmap = { workspace = true }
+smallvec = { workspace = true }
+bytes = { workspace = true }
+once_cell = { workspace = true }
+# For SQLite backend
+rusqlite = { version = "0.31", features = ["bundled", "serde_json"], optional = true }
+chrono = { version = "0.4", optional = true }
+# For CBOR serialization
+ciborium = "0.2"
+
+[features]
+default = ["sqlite"]
+sqlite = ["dep:rusqlite", "dep:chrono"]
+
+[dev-dependencies]
+proptest = { workspace = true }

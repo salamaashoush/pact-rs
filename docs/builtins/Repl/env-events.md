@@ -38,7 +38,7 @@ The following example demonstrates how to retrieve events, then clear the event 
 
 In this example, there were no events to retrieve, so an empty list is returned.
 
-The following example retrieves three events—TOKEN, MINT, and ACCOUNT-GUARD—without clearing the event state:
+The following example retrieves three events-TOKEN, MINT, and ACCOUNT-GUARD-without clearing the event state:
 
 ```pact
 (env-events false)

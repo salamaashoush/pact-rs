@@ -1,0 +1,25 @@
+[package]
+name = "pact-errors"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Error types and diagnostics for Pact"
+
+[dependencies]
+pact-shared-types = { path = "../pact-shared-types" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+compact_str = { workspace = true, features = ["serde"] }
+colored = "2.0"
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[[example]]
+name = "error_demo"
+path = "examples/error_demo.rs"

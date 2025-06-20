@@ -1,0 +1,160 @@
+# Cargo configuration for Pact development
+# Optimized for fast compilation and parser/interpreter performance
+
+[build]
+# Use all available cores for parallel compilation
+jobs = -1
+# Incremental compilation for faster rebuilds
+incremental = true
+# Target native CPU for best performance in development
+rustflags = ["-C", "target-cpu=native"]
+
+[target.x86_64-unknown-linux-gnu]
+# Linux-specific optimizations
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+[target.x86_64-apple-darwin]
+# macOS-specific optimizations
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+[target.aarch64-apple-darwin]
+# Apple Silicon optimizations
+rustflags = [
+    "-C", "target-cpu=native",
+]
+
+# Aliases for common development tasks
+[alias]
+# Quick check without tests
+c = "check --all-features"
+# Check with all targets
+ca = "check --all-targets --all-features"
+
+# Testing aliases
+t = "test"
+ta = "test --all-features"
+tq = "test --quiet"
+tr = "test --release"
+
+# Build aliases
+b = "build"
+br = "build --release"
+ba = "build --all-features"
+
+# Benchmarking
+bench = "bench --all-features"
+
+# Documentation
+d = "doc --no-deps --open"
+da = "doc --all-features --no-deps --open"
+
+# Linting and formatting
+format = "fmt --all"
+fix = "clippy --fix --allow-dirty --allow-staged"
+lint = "clippy --all-targets --all-features -- -D warnings"
+strict = "clippy --all-targets --all-features -- -W clippy::all -W clippy::pedantic -W clippy::nursery"
+
+# Parser/Lexer specific commands
+parse-check = "check -p pact-parser -p pact-lexer"
+parse-test = "test -p pact-parser -p pact-lexer"
+parse-bench = "bench -p pact-parser -p pact-lexer"
+
+# Interpreter/Evaluator specific commands
+eval-check = "check -p pact-eval -p pact-builtins"
+eval-test = "test -p pact-eval -p pact-builtins"
+eval-bench = "bench -p pact-eval"
+
+# Combined workflows
+ready = "run --bin cargo-ready"  # Custom readiness check
+perf = "build --profile=perf"    # Performance profiling build
+
+# Development helpers
+expand = "expand"
+tree = "tree"
+outdated = "outdated"
+audit = "audit"
+clean-all = "clean --target-dir target"
+
+# Profile-guided optimization helpers
+pgo-generate = "build --profile=pgo-generate"
+pgo-use = "build --profile=pgo-use"
+
+[env]
+# Enable colored output
+CARGO_TERM_COLOR = "always"
+# Rust backtrace for debugging
+RUST_BACKTRACE = "1"
+# Log level for development
+RUST_LOG = "debug"
+
+[net]
+# Faster downloads
+git-fetch-with-cli = true
+
+[profile.dev]
+# Development profile optimizations
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = "unwind"
+incremental = true
+# Speed up compilation
+split-debuginfo = "unpacked"
+
+[profile.release]
+# Release profile for production
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = "fat"
+panic = "unwind"
+incremental = false
+codegen-units = 1
+strip = true
+
+[profile.perf]
+# Performance profiling profile
+inherits = "release"
+debug = true
+strip = false
+
+[profile.bench]
+# Benchmarking profile
+inherits = "release"
+lto = true
+codegen-units = 1
+
+# Profile for faster test compilation
+[profile.test]
+opt-level = 1
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+incremental = true
+
+# Profile for compiler optimization analysis
+[profile.pgo-generate]
+inherits = "release"
+debug = true
+
+[profile.pgo-use]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+# Parser-specific optimizations
+[profile.parser]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+# Inline more aggressively for parser hot paths
+inline-threshold = 500

@@ -33,7 +33,7 @@ pact> (rollback-tx)
 "Rollback Tx 0 load module"
 ```
 
-In this example, a new transaction—Tx0—is started using `(begin-tx)`, and then `(rollback-tx)` is called to roll back the changes from the transaction.
+In this example, a new transaction-Tx0-is started using `(begin-tx)`, and then `(rollback-tx)` is called to roll back the changes from the transaction.
 The function returns a string indicating that "Tx 0" has been rolled back.
 
 Note that you should only call the `rollback-tx` function after performing the necessary operations within a transaction.

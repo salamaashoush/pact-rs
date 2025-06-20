@@ -167,3 +167,12 @@ Pact currently supports the following LSP features:
 ## License
 
 This code is distributed under the terms of the BSD3 license. See [LICENSE](LICENSE) for details.
+
+
+I want to make the pact-cek crate in a better shape, it was grown so quickly due to interating on it and it has some not so well structured code, so please come up with a refactoring plan sticking to these rules
+- always follow the haskell code as a refrence to understand how to implement things correctly.
+- layout the good archicture for the CEK machine first an make sure it will cover all the necessary builtin implementations use the haskel code as a refrence
+- never use workaround,TODO, for now do that, unimplemented, skip this for now comments, always write final and working code
+- follow ideomtic rust and best practices for performance and high quality code.
+- follow modular architure to help iteration without polating the code
+- test and document code as you go

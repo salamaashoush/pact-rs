@@ -37,7 +37,7 @@ The following example demonstrates how to enable REPL native functions:
 
 After enabling REPL natives, you can use environment configuration functions like `env-sigs` in your module code.
 
-It's important to note that you should only enable REPL native functions in module code—that is, executable `.pact` files—if absolutely necessary. 
+It's important to note that you should only enable REPL native functions in module code-that is, executable `.pact` files-if absolutely necessary. 
 Most REPL native functions are intended to be used exclusively in the REPL environment. 
 If you enable access to the REPL native functions in module code, ensure that access to the functions is properly controlled and validated.
 

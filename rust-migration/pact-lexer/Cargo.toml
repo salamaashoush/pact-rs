@@ -1,0 +1,28 @@
+[package]
+name = "pact-lexer"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Lexical analysis for Pact"
+
+[dependencies]
+logos = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+# Performance optimization dependencies
+compact_str = "0.8.1"
+rustc-hash = "2.0"
+pact-errors = { path = "../pact-errors" }
+pact-shared-types = { path = "../pact-shared-types" }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "lexer_benches"
+harness = false

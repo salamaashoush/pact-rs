@@ -79,8 +79,8 @@ common pact-common
     , vector
     , vector-algorithms
     , megaparsec
-    , cryptonite
-    , memory
+    , memory >= 0.18
+    , crypton >= 1.0
     , safe-exceptions
     , ralist >= 0.4.0.0
     , haskeline

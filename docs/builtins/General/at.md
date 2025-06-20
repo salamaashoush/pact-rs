@@ -38,7 +38,7 @@ The return value can be any data type.
 
 ### Examples
 
-The following example returns the value found at the `index` location—starting with 0—from a list of values.
+The following example returns the value found at the `index` location-starting with 0-from a list of values.
 For example, the value at `index` location `3` is `14`:
 
 ```pact

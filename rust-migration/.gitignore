@@ -1,0 +1,37 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+tarpaulin-report.html
+cobertura.xml
+coverage/
+
+# Benchmarking
+criterion/
+
+# Profiling
+flamegraph.svg
+perf.data
+perf.data.old
+
+# Documentation
+doc/
+
+# Temporary files
+*.tmp
+*.temp
+.env

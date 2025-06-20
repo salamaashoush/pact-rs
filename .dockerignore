@@ -1,0 +1,50 @@
+# Build artifacts
+dist-newstyle/
+.stack-work/
+*.hi
+*.o
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+# docs/
+README.md
+*.md
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Nix files
+shell.nix
+default.nix
+*.nix
+
+# Test files
+# pact-tests/golden/
+# **/test-*
+
+# Rust migration (not needed for Haskell build)
+rust-migration/
+
+# Temporary files
+.DS_Store
+*~
+*.tmp
+*.log
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Other artifacts
+*.tar.gz
+*.zip
+# profile-tx/
+# bench/
+# gasmodel/
