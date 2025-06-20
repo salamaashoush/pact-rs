@@ -1382,6 +1382,76 @@ fn define_keyset_implementation() -> NativeFunction {
   })
 }
 
+/// Tx-log implementation - retrieves transaction logs for a table
+fn tx_log_implementation() -> NativeFunction {
+  Box::new(|_info, _builtin, cont, handler, env, args| {
+    if args.len() != 1 {
+      return EvalM::pure_value(EvalResult::EvalError(pact_errors::PactError::PEExecutionError(
+        pact_errors::EvalError::ArgumentCountMismatch { function: "tx-log".to_string(), expected: 1, received: args.len() },
+        vec![],
+        pact_shared_types::SpanInfo::empty()
+      )));
+    }
+
+    // Extract table argument
+    let table_arg = args[0].clone();
+
+    charge_gas("tx-log", MilliGas(50))
+      .bind(move |_| {
+        match table_arg {
+          CEKValue::VTable { name, .. } => {
+            // Guard table read
+            match guard_table(&env, &name, GuardTableType::Read) {
+              Ok(_) => {
+                // For now, return empty list as tx_log is not yet implemented
+                // TODO: Implement tx_log when PactDb trait is extended
+                let result = CEKValue::VPactValue(PactValue::List(vec![]));
+                return_cek_value(cont, handler, result)
+              }
+              Err(e) => EvalM::pure_value(EvalResult::EvalError(e)),
+            }
+          }
+          _ => EvalM::pure_value(EvalResult::EvalError(pact_errors::PactError::PEExecutionError(
+            pact_errors::EvalError::TypeMismatch {
+              expected: "table".to_string(),
+              found: format!("{:?}", table_arg),
+              context: "argument validation".to_string(),
+            },
+            vec![],
+            pact_shared_types::SpanInfo::empty()
+          ))),
+        }
+      })
+      .try_with(|error| {
+        unwind_capability_stack(&error).bind(|_| EvalM::pure_value(EvalResult::EvalError(error)))
+      })
+  })
+}
+
+/// Tx-hash implementation - returns the current transaction hash
+fn tx_hash_implementation() -> NativeFunction {
+  Box::new(|_info, _builtin, cont, handler, _env, args| {
+    if args.len() != 0 {
+      return EvalM::pure_value(EvalResult::EvalError(pact_errors::PactError::PEExecutionError(
+        pact_errors::EvalError::ArgumentCountMismatch { function: "tx-hash".to_string(), expected: 0, received: args.len() },
+        vec![],
+        pact_shared_types::SpanInfo::empty()
+      )));
+    }
+
+    charge_gas("tx-hash", MilliGas(10))
+      .bind(move |_| {
+        // For now, return a placeholder hash as transaction context is not yet implemented
+        // TODO: Implement transaction hash when CEKEnv is extended with transaction context
+        let result = CEKValue::VPactValue(PactValue::String("0000000000000000000000000000000000000000000000000000000000000000".to_string()));
+        return_cek_value(cont, handler, result)
+      })
+      .try_with(|error| {
+        unwind_capability_stack(&error).bind(|_| EvalM::pure_value(EvalResult::EvalError(error)))
+      })
+  })
+}
+
 /// Read-with-fields implementation - reads specific fields from a table row
 fn read_with_fields_implementation() -> NativeFunction {
   Box::new(|_info, _builtin, cont, handler, env, args| {
@@ -1607,6 +1677,18 @@ pub fn register_database_builtins(builtin_env: &mut BuiltinEnv) -> Result<(), pa
     name: "describe-table",
     arity: 1,
     implementation: describe_table_implementation(),
+  });
+  
+  builtin_env.register(CoreTxLog, BuiltinSpec {
+    name: "tx-log",
+    arity: 1,
+    implementation: tx_log_implementation(),
+  });
+  
+  builtin_env.register(CoreTxHash, BuiltinSpec {
+    name: "tx-hash",
+    arity: 0,
+    implementation: tx_hash_implementation(),
   });
   
   // Note: CoreReadWithFields doesn't exist in CoreBuiltin enum

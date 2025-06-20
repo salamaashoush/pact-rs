@@ -115,12 +115,18 @@ pub fn register_list_builtins(builtin_env: &mut BuiltinEnv) -> Result<(), pact_e
         implementation: contains_implementation(),
     });
 
+    builtin_env.register(CoreBuiltin::CoreWhere, BuiltinSpec {
+        name: "where",
+        arity: 3,
+        implementation: where_implementation(),
+    });
+
     Ok(())
 }
 
 
 /// Zip implementation - combines two lists with a function
-fn zip_implementation() -> NativeFunction {
+pub fn zip_implementation() -> NativeFunction {
     Box::new(|info, _builtin, cont, handler, env, args| {
         charge_gas_with_args("zip", &args, MilliGas(10))
             .bind(move |_| {
@@ -178,7 +184,7 @@ fn zip_implementation() -> NativeFunction {
 }
 
 /// Map implementation with full CEK integration
-fn map_implementation() -> NativeFunction {
+pub fn map_implementation() -> NativeFunction {
     Box::new(|info, _builtin, cont, handler, env, args| {
         charge_gas_with_args("map", &args, MilliGas(10))
             .bind(move |_| {
@@ -223,7 +229,7 @@ fn map_implementation() -> NativeFunction {
 }
 
 /// Filter implementation with full CEK integration
-fn filter_implementation() -> NativeFunction {
+pub fn filter_implementation() -> NativeFunction {
     Box::new(|info, _builtin, cont, handler, env, args| {
         charge_gas_with_args("filter", &args, MilliGas(10))
             .bind(move |_| {
@@ -268,7 +274,7 @@ fn filter_implementation() -> NativeFunction {
 }
 
 /// Fold implementation with full CEK integration
-fn fold_implementation() -> NativeFunction {
+pub fn fold_implementation() -> NativeFunction {
     Box::new(|info, _builtin, cont, handler, env, args| {
         charge_gas_with_args("fold", &args, MilliGas(15))
             .bind(move |_| {
@@ -710,4 +716,69 @@ fn values_equal(a: &PactValue, b: &PactValue) -> bool {
         }
         _ => false,
     }
+}
+
+/// Where implementation - applies predicate to field in object
+/// From Haskell:
+/// ```haskell
+/// coreWhere info b cont handler _env = \case
+///   [VString field, VClosure app, VObject o] -> do
+///     chargeGasArgs info (GObjOp (ObjOpLookup field (M.size o)))
+///     case M.lookup (Field field) o of
+///       Just v -> do
+///         let cont' = EnforceBoolC info cont
+///         applyLam app [VPactValue v] cont' handler
+///       Nothing ->
+///         throwExecutionError info (ObjectIsMissingField (Field field) (ObjectData o))
+/// ```
+fn where_implementation() -> NativeFunction {
+    Box::new(|info, _builtin, cont, handler, env, args| {
+        if args.len() != 3 {
+            throw_argument_count_error(info, "where", 3, args.len())
+        } else {
+            // Extract args before moving into closure
+            let arg0 = args[0].clone();
+            let arg1 = args[1].clone();
+            let arg2 = args[2].clone();
+            
+            charge_gas_with_args("where", &args, MilliGas(5))
+                .bind(move |_| {
+                    match (arg0, arg1, arg2) {
+                        (CEKValue::VPactValue(PactValue::String(field)), 
+                         CEKValue::VClosure(predicate), 
+                         CEKValue::VPactValue(PactValue::Object(obj))) => {
+                            // Charge gas for object lookup
+                            let obj_size = obj.len() as u64;
+                            charge_gas("where-lookup", MilliGas(obj_size))
+                                .bind(move |_| {
+                                    match obj.get(&field) {
+                                        Some(value) => {
+                                            // Create continuation that enforces boolean result
+                                            let enforce_bool_cont = Cont::EnforceBoolC {
+                                                info,
+                                                cont: Box::new(cont),
+                                            };
+                                            // Apply predicate to field value
+                                            let field_args = vec![CEKValue::VPactValue(value.clone())];
+                                            crate::eval::apply_function(predicate.clone(), field_args, enforce_bool_cont, handler, env)
+                                        }
+                                        None => {
+                                            throw_execution_error(
+                                                info, 
+                                                EvalError::ObjectMissingField(field.clone())
+                                            )
+                                        }
+                                    }
+                                })
+                        }
+                        _ => throw_type_mismatch_error(
+                            info, 
+                            "field name, predicate function, and object", 
+                            "other", 
+                            "where"
+                        )
+                    }
+                })
+        }
+    })
 }

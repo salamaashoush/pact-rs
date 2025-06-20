@@ -1,12 +1,12 @@
 # Pact Rust Migration - Feature Parity Plan
 
-**Date**: December 2024  
+**Date**: December 2024 (Updated)  
 **Current Status**: ~75% Complete  
 **Target**: 100% Feature Parity with Haskell Implementation
 
 ## Executive Summary
 
-This document provides a comprehensive plan to achieve feature parity between the Rust migration and the Haskell implementation of Pact 5. The analysis identified critical gaps in transitive dependency computation, builtin functions, and infrastructure components. The plan outlines 60 specific tasks organized into 4 phases over approximately 18-22 weeks.
+This document provides a comprehensive plan to achieve feature parity between the Rust migration and the Haskell implementation of Pact 5. **Recent analysis discovered that transitive dependencies ARE implemented in Rust**, significantly changing the priority order. The main blockers are now CEK compilation errors and missing builtin functions. The plan outlines revised tasks organized into 4 phases over approximately 12-16 weeks.
 
 ## Current Architecture Analysis
 
@@ -49,55 +49,76 @@ This document provides a comprehensive plan to achieve feature parity between th
 | Component | Status | Completeness | Key Gaps |
 |-----------|--------|--------------|----------|
 | **Lexer/Parser** | ✅ Excellent | 95% | Minor edge cases |
-| **Compilation Pipeline** | ⚠️ Good | 80% | Missing transitive dependencies |
-| **CEK Evaluator** | ⚠️ Partial | 60% | Incomplete builtins, capability integration |
-| **Module System** | ⚠️ Good | 85% | No transitive dependency resolution |
+| **Compilation Pipeline** | ⚠️ Good | 85% | **RESOLVED**: Transitive deps implemented |
+| **CEK Evaluator** | ❌ BLOCKED | 60% | **117 compilation errors**, missing builtins |
+| **Module System** | ✅ Good | 90% | **RESOLVED**: Transitive deps implemented |
 | **Database Layer** | ⚠️ Good | 75% | SQLite optimization needed |
-| **CLI/REPL** | ⚠️ Partial | 70% | LSP/Server disabled, missing commands |
+| **CLI/REPL** | ❌ BLOCKED | 70% | LSP/Server blocked by CEK errors |
 | **Supporting Systems** | ✅ Excellent | 90% | Minor gaps |
 
 ## Critical Architectural Gaps
 
-### 1. Transitive Dependencies (CRITICAL)
-- **Missing**: Equivalent to `Pact.Core.TransitiveDependencies.getAllTransitiveDependencies`
-- **Impact**: Module compilation cannot achieve functional parity
-- **Effort**: 2-3 weeks
+### 1. CEK Compilation Errors (URGENT)
+- **Issue**: 117 compilation errors in pact-cek due to inconsistent error types
+- **Impact**: Blocks LSP server, HTTP server, and full evaluation functionality
+- **Effort**: 1 week
 
 ### 2. Complete Builtin System (HIGH)
-- **Missing**: ~40% of builtin functions not implemented
+- **Missing**: 21 of 137 builtin functions not implemented (116 complete)
 - **Impact**: Many Pact programs cannot execute
-- **Effort**: 4-6 weeks
+- **Effort**: 3-4 weeks
 
 ### 3. LSP and Server Infrastructure (HIGH)
-- **Missing**: Components disabled due to compilation issues
+- **Issue**: Components disabled due to CEK compilation errors
 - **Impact**: Cannot integrate with development tools or blockchain
-- **Effort**: 2-3 weeks
+- **Effort**: 1-2 weeks after CEK fixes
 
 ### 4. Capability System Integration (MEDIUM)
 - **Missing**: Full integration with CEK evaluator
 - **Impact**: Security model not fully operational
-- **Effort**: 3-4 weeks
+- **Effort**: 2-3 weeks
+
+### ✅ RESOLVED: Transitive Dependencies
+- **Status**: Algorithm IS implemented in pact-modules crate
+- **Next**: Integration with compilation pipeline needed
 
 ## Feature Parity Todo List
 
-### Phase 1: Critical Foundations (Weeks 1-6)
+### Phase 1: Critical Blockers (Weeks 1-2)
 
-#### Transitive Dependencies (7 tasks)
-- [ ] deps-1: Create pact-dependencies crate with transitive dependency computation
-- [ ] deps-2: Implement getAllTransitiveDependencies equivalent function
-- [ ] deps-3: Add AST traversal for dependency extraction (getTermDependents, getDefunDependents)
-- [ ] deps-4: Implement worklist-based transitive closure algorithm
-- [ ] deps-5: Add gas-aware dependency computation with proper charging
+#### CEK Compilation Fixes (5 tasks)
+- [ ] cek-1: **URGENT** - Fix 117 compilation errors in pact-cek
+- [ ] cek-2: Align error type definitions between pact-errors and pact-cek
+- [ ] cek-3: Resolve type mismatches in builtin function signatures
+- [ ] cek-4: Fix continuation type inconsistencies
+- [ ] cek-5: Enable full CEK evaluator compilation
+
+#### Infrastructure Restoration (3 tasks)
+- [ ] infra-1: Enable pact-lsp compilation after CEK fixes
+- [ ] infra-2: Enable pact-server compilation after CEK fixes
+- [ ] infra-3: Verify full CLI/REPL functionality
+
+#### ✅ COMPLETED: Transitive Dependencies
+- [x] deps-1: ✅ Transitive dependency computation implemented in pact-modules
+- [x] deps-2: ✅ getAllTransitiveDependencies equivalent function exists
+- [x] deps-3: ✅ AST traversal for dependency extraction implemented
+- [x] deps-4: ✅ Worklist-based transitive closure algorithm implemented
+- [x] deps-5: ✅ Gas-aware dependency computation implemented
 - [ ] deps-6: Integrate transitive dependencies into pact-compiler pipeline
 - [ ] deps-7: Port TransitiveDependencyTests from Haskell to Rust
 
-#### Core Builtins (10 tasks)
-- [ ] builtin-1: Complete arithmetic builtins (add, sub, mul, div, mod, pow, etc.)
-- [ ] builtin-2: Implement comparison builtins (eq, neq, lt, gt, leq, geq)
-- [ ] builtin-3: Add boolean logic builtins (and, or, not)
-- [ ] builtin-4: Implement string manipulation builtins (concat, length, take, drop)
-- [ ] builtin-5: Add list operation builtins (map, filter, fold, reverse, sort)
-- [ ] builtin-6: Implement database builtins (read, write, insert, update, select)
+### Phase 2: Core Functionality (Weeks 3-6)
+
+#### Complete Builtin System (21 missing functions)
+- [ ] builtin-1: **Database Operations** - insert, update, select (5 functions)
+- [ ] builtin-2: **Cryptographic Functions** - verify-spv, base64-encode/decode (3 functions)
+- [ ] builtin-3: **Advanced List Operations** - fold variants, partition (4 functions)
+- [ ] builtin-4: **Time Manipulation** - format-time, parse-time variants (3 functions)
+- [ ] builtin-5: **Guard Operations** - enforce-guard variants (2 functions)
+- [ ] builtin-6: **String Operations** - Advanced string functions (2 functions)
+- [ ] builtin-7: **Capability Functions** - Advanced capability operations (2 functions)
+
+**Note**: Core arithmetic, comparison, and basic operations are already implemented (116/137 complete)
 - [ ] builtin-7: Add capability builtins (with-capability, require-capability, compose-capability)
 - [ ] builtin-8: Implement time/date builtins (time, add-time, diff-time, format-time)
 - [ ] builtin-9: Add cryptographic builtins (hash, verify-spv, base64-encode/decode)
@@ -109,7 +130,7 @@ This document provides a comprehensive plan to achieve feature parity between th
 - [ ] infra-3: Resolve type mismatches causing compilation failures
 - [ ] infra-4: Enable disabled pact-ir pipeline module
 
-### Phase 2: Core Functionality (Weeks 7-12)
+### Phase 3: Integration and Enhancement (Weeks 7-10)
 
 #### Capability System (5 tasks)
 - [ ] cap-1: Integrate capability system with CEK evaluator
@@ -125,7 +146,7 @@ This document provides a comprehensive plan to achieve feature parity between th
 - [ ] eval-4: Implement pact continuation and rollback mechanisms
 - [ ] eval-5: Add proper error propagation and recovery in evaluation
 
-### Phase 3: Development Experience (Weeks 13-16)
+### Phase 4: Development Experience (Weeks 11-14)
 
 #### REPL Enhancement (8 tasks)
 - [ ] repl-1: Implement missing REPL commands (.env-data, .env-keys, .env-sigs)
@@ -146,7 +167,7 @@ This document provides a comprehensive plan to achieve feature parity between th
 - [ ] cli-3: Complete signature combination and verification workflows
 - [ ] storage-4: Optimize SQLite backend for production use
 
-### Phase 4: Quality & Performance (Weeks 17-20)
+### Phase 5: Quality & Performance (Weeks 15-16)
 
 #### Testing (4 tasks)
 - [ ] test-1: Port all Haskell integration tests to Rust
@@ -230,10 +251,17 @@ pub fn register_arithmetic_builtins(env: &mut BuiltinEnv) -> Result<(), PactErro
 ## Resources Required
 
 - **Development Team**: 2-3 senior Rust developers
-- **Timeline**: 18-22 weeks for full parity
+- **Timeline**: 12-16 weeks for full parity (reduced due to transitive deps being complete)
 - **Infrastructure**: CI/CD pipeline with benchmarking
 - **Testing**: Access to production Pact programs for validation
 
 ## Conclusion
 
-The Rust migration is well-positioned to achieve feature parity with significant performance improvements. The critical path focuses on transitive dependencies, builtins, and infrastructure fixes. With focused development over 18-22 weeks, the Rust implementation will provide a superior foundation for Pact's future evolution.
+**Major Discovery**: The Rust migration is in a much better position than previously assessed. The transitive dependencies algorithm IS fully implemented in the pact-modules crate, eliminating the most critical architectural gap.
+
+The actual critical path now focuses on:
+1. **Immediate**: Fix CEK compilation errors (1 week)
+2. **Short-term**: Complete remaining 21 builtin functions (3-4 weeks)
+3. **Medium-term**: Integration and testing (4-6 weeks)
+
+With focused development over 12-16 weeks, the Rust implementation will achieve full feature parity and provide a superior foundation for Pact's future evolution.

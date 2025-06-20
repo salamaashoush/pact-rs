@@ -120,7 +120,59 @@ pub enum Cont {
     CapBodyC {
         env: CEKEnv,
         info: SpanInfo,
-        body_state: CapBodyState,
+        cap_body: CapBodyState,
+        cont: Box<Cont>,
+    },
+
+    /// Map list continuation - evaluates list for map operation
+    MapListC {
+        env: CEKEnv,
+        info: SpanInfo,
+        func: CanApply,
+        cont: Box<Cont>,
+    },
+
+    /// Filter list continuation - evaluates list for filter operation
+    FilterListC {
+        env: CEKEnv,
+        info: SpanInfo,
+        func: CanApply,
+        cont: Box<Cont>,
+    },
+
+    /// Fold init continuation - evaluates initial value for fold
+    FoldInitC {
+        env: CEKEnv,
+        info: SpanInfo,
+        func: CanApply,
+        list_expr: CoreTerm,
+        cont: Box<Cont>,
+    },
+
+    /// Fold list continuation - evaluates list for fold operation
+    FoldListC {
+        env: CEKEnv,
+        info: SpanInfo,
+        func: CanApply,
+        init_val: CEKValue,
+        cont: Box<Cont>,
+    },
+
+    /// Zip list1 continuation - evaluates first list for zip
+    ZipList1C {
+        env: CEKEnv,
+        info: SpanInfo,
+        func: CanApply,
+        list2_expr: CoreTerm,
+        cont: Box<Cont>,
+    },
+
+    /// Zip list2 continuation - evaluates second list for zip
+    ZipList2C {
+        env: CEKEnv,
+        info: SpanInfo,
+        func: CanApply,
+        list1: Vec<PactValue>,
         cont: Box<Cont>,
     },
 
@@ -288,55 +340,50 @@ pub enum BuiltinCont {
         args: Vec<CoreTerm>,
         evaluated_args: Vec<PactValue>,
     },
+
+    /// Map builtin form continuation - evaluates list after function
+    MapBuiltinC {
+        list_expr: CoreTerm,
+    },
+
+    /// Filter builtin form continuation - evaluates list after function
+    FilterBuiltinC {
+        list_expr: CoreTerm,
+    },
+
+    /// Fold builtin form continuation - evaluates init and list after function
+    FoldBuiltinC {
+        init_expr: CoreTerm,
+        list_expr: CoreTerm,
+    },
+
+    /// Zip builtin form continuation - evaluates both lists after function
+    ZipBuiltinC {
+        list1_expr: CoreTerm,
+        list2_expr: CoreTerm,
+    },
+
+    /// Cond form continuation - evaluates conditions sequentially
+    CondC {
+        expr: CoreTerm,
+        remaining_conds: Vec<(CoreTerm, CoreTerm)>,
+    },
 }
 
-/// Capability continuation types
+/// Capability continuation
 #[derive(Debug, Clone)]
-pub enum CapCont {
-    /// With-capability body execution
-    WithCapCont {
-        cap_name: String,
-        cap_args: Vec<PactValue>,
-        body: Vec<CoreTerm>,
-    },
-
-    /// Require-capability check
-    RequireCapCont {
-        cap_name: String,
-        cap_args: Vec<PactValue>,
-    },
-
-    /// Install-capability operation
-    InstallCapCont {
-        cap_name: String,
-        cap_args: Vec<PactValue>,
-    },
-
-    /// Compose-capability operation
-    ComposeCapCont {
-        cap_name: String,
-        cap_args: Vec<PactValue>,
-        target_caps: Vec<String>,
-    },
-
-    /// Create-user-guard operation
-    CreateUserGuardCont {
-        name: String,
-        args: Vec<PactValue>,
-    },
+pub struct CapCont {
+    /// Capability term to evaluate
+    pub cap_term: CoreTerm,
+    /// Body state containing forms to execute after capability
+    pub body_state: CapBodyState,
 }
 
 /// Capability body execution state
 #[derive(Debug, Clone)]
 pub struct CapBodyState {
-    /// Capability being executed
-    pub cap_name: String,
-    /// Capability arguments
-    pub cap_args: Vec<PactValue>,
-    /// Remaining body expressions
-    pub remaining_body: Vec<CoreTerm>,
-    /// Accumulated results
-    pub results: Vec<PactValue>,
+    /// Body forms to execute
+    pub body_forms: Vec<CoreTerm>,
 }
 
 /// Capability pop state
@@ -522,6 +569,12 @@ impl Cont {
             Cont::ModuleAdminC { cont, .. } => Some(cont),
             Cont::StackPopC { cont, .. } => Some(cont),
             Cont::EnforceErrorC { cont, .. } => Some(cont),
+            Cont::MapListC { cont, .. } => Some(cont),
+            Cont::FilterListC { cont, .. } => Some(cont),
+            Cont::FoldInitC { cont, .. } => Some(cont),
+            Cont::FoldListC { cont, .. } => Some(cont),
+            Cont::ZipList1C { cont, .. } => Some(cont),
+            Cont::ZipList2C { cont, .. } => Some(cont),
         }
     }
 
@@ -548,6 +601,12 @@ impl Cont {
             Cont::ModuleAdminC { .. } => None,
             Cont::StackPopC { info, .. } => Some(info),
             Cont::EnforceErrorC { info, .. } => Some(info),
+            Cont::MapListC { info, .. } => Some(info),
+            Cont::FilterListC { info, .. } => Some(info),
+            Cont::FoldInitC { info, .. } => Some(info),
+            Cont::FoldListC { info, .. } => Some(info),
+            Cont::ZipList1C { info, .. } => Some(info),
+            Cont::ZipList2C { info, .. } => Some(info),
         }
     }
 }
@@ -606,20 +665,3 @@ impl BuiltinCont {
     }
 }
 
-/// Capability continuation constructors
-impl CapCont {
-    /// Create with-capability continuation
-    pub fn with_cap_cont(cap_name: String, cap_args: Vec<PactValue>, body: Vec<CoreTerm>) -> Self {
-        CapCont::WithCapCont { cap_name, cap_args, body }
-    }
-
-    /// Create require-capability continuation
-    pub fn require_cap_cont(cap_name: String, cap_args: Vec<PactValue>) -> Self {
-        CapCont::RequireCapCont { cap_name, cap_args }
-    }
-
-    /// Create install-capability continuation
-    pub fn install_cap_cont(cap_name: String, cap_args: Vec<PactValue>) -> Self {
-        CapCont::InstallCapCont { cap_name, cap_args }
-    }
-}

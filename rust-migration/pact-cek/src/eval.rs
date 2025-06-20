@@ -358,6 +358,159 @@ fn apply_cont_to_value_impl(
                 })
         }
 
+        // Map list continuation - evaluates list for map operation
+        Cont::MapListC { env, info, func, cont } => {
+            // The value should be the evaluated list
+            match value.as_pact_value() {
+                Some(PactValue::List(list)) => {
+                    // Apply map operation using the builtin map implementation
+                    let args = vec![CEKValue::VClosure(func), CEKValue::VPactValue(PactValue::List(list.clone()))];
+                    let map_impl = crate::builtin::list_ops::map_implementation();
+                    map_impl(info, pact_ir::CoreBuiltin::CoreMap, *cont, handler, env, args)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "list".to_string(),
+                                found: "other".to_string(),
+                                context: "map list argument".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Filter list continuation - evaluates list for filter operation
+        Cont::FilterListC { env, info, func, cont } => {
+            // The value should be the evaluated list
+            match value.as_pact_value() {
+                Some(PactValue::List(list)) => {
+                    // Apply filter operation using the builtin filter implementation
+                    let args = vec![CEKValue::VClosure(func), CEKValue::VPactValue(PactValue::List(list.clone()))];
+                    let filter_impl = crate::builtin::list_ops::filter_implementation();
+                    filter_impl(info, pact_ir::CoreBuiltin::CoreFilter, *cont, handler, env, args)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "list".to_string(),
+                                found: "other".to_string(),
+                                context: "filter list argument".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Fold init continuation - evaluates initial value for fold
+        Cont::FoldInitC { env, info, func, list_expr, cont } => {
+            // The value is the evaluated initial value
+            // Now evaluate the list
+            let fold_list_cont = Cont::FoldListC {
+                env: env.clone(),
+                info,
+                func,
+                init_val: value,
+                cont,
+            };
+            eval_cek(fold_list_cont, handler, env, list_expr)
+        }
+
+        // Fold list continuation - evaluates list for fold operation
+        Cont::FoldListC { env, info, func, init_val, cont } => {
+            // The value should be the evaluated list
+            match value.as_pact_value() {
+                Some(PactValue::List(list)) => {
+                    // Apply fold operation using the builtin fold implementation
+                    let args = vec![CEKValue::VClosure(func), init_val, CEKValue::VPactValue(PactValue::List(list.clone()))];
+                    let fold_impl = crate::builtin::list_ops::fold_implementation();
+                    fold_impl(info, pact_ir::CoreBuiltin::CoreFold, *cont, handler, env, args)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "list".to_string(),
+                                found: "other".to_string(),
+                                context: "fold list argument".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Zip list1 continuation - evaluates first list for zip
+        Cont::ZipList1C { env, info, func, list2_expr, cont } => {
+            // The value is the evaluated first list
+            match value.as_pact_value() {
+                Some(PactValue::List(list1)) => {
+                    // Now evaluate the second list
+                    let zip_list2_cont = Cont::ZipList2C {
+                        env: env.clone(),
+                        info,
+                        func,
+                        list1: list1.clone(),
+                        cont,
+                    };
+                    eval_cek(zip_list2_cont, handler, env, list2_expr)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "list".to_string(),
+                                found: "other".to_string(),
+                                context: "zip first list".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Zip list2 continuation - evaluates second list for zip
+        Cont::ZipList2C { env, info, func, list1, cont } => {
+            // The value is the evaluated second list
+            match value.as_pact_value() {
+                Some(PactValue::List(list2)) => {
+                    // Apply zip operation using the builtin zip implementation
+                    let args = vec![
+                        CEKValue::VClosure(func), 
+                        CEKValue::VPactValue(PactValue::List(list1)), 
+                        CEKValue::VPactValue(PactValue::List(list2.clone()))
+                    ];
+                    let zip_impl = crate::builtin::list_ops::zip_implementation();
+                    zip_impl(info, pact_ir::CoreBuiltin::CoreZip, *cont, handler, env, args)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "list".to_string(),
+                                found: "other".to_string(),
+                                context: "zip second list".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
         // Other continuation types need implementation
         _ => EvalM::pure_value(EvalResult::EvalError(
             pact_errors::PactError::PEExecutionError(
@@ -838,14 +991,161 @@ pub fn eval_builtin_form(
                     eval_cek(builtin_cont, handler, env, *name)
                 })
         }
+        
+        CWithCapability { cap, body } => {
+            charge_gas("eval-with-capability", MilliGas(20))
+                .bind(move |_| {
+                    // Convert body vector to sequential evaluation
+                    let body_exprs: Vec<CoreTerm> = body.into_iter().map(|b| *b).collect();
+                    
+                    // Create capability body continuation
+                    let cap_body_cont = crate::cont::CapBodyState {
+                        body_forms: body_exprs,
+                    };
+                    
+                    // Extract the cap term before moving
+                    let cap_term = *cap;
+                    
+                    // Create capability invocation continuation
+                    let cap_invoke = crate::cont::CapCont {
+                        cap_term: cap_term.clone(),
+                        body_state: cap_body_cont,
+                    };
+                    
+                    // Create the capability continuation
+                    let cap_cont = Cont::CapInvokeC {
+                        env: env.clone(),
+                        info,
+                        cap_cont: cap_invoke,
+                        cont: Box::new(cont),
+                    };
+                    
+                    // Evaluate the capability term
+                    eval_cek(cap_cont, handler, env, cap_term)
+                })
+        }
 
-        _ => EvalM::pure_value(EvalResult::EvalError(
-            pact_errors::PactError::PEExecutionError(
-                pact_errors::EvalError::UnimplementedBuiltin(format!("{} - {}", "Builtin form", "Not yet implemented")),
-                vec![],
-                pact_shared_types::SpanInfo::empty()
-            )
-        ))
+        CMap { func, list } => {
+            charge_gas("eval-map", MilliGas(10))
+                .bind(move |_| {
+                    // Evaluate the function expression first
+                    let map_builtin_cont = BuiltinCont::MapBuiltinC {
+                        list_expr: *list,
+                    };
+                    let builtin_cont = Cont::BuiltinC {
+                        env: env.clone(),
+                        info,
+                        builtin_cont: map_builtin_cont,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(builtin_cont, handler, env, *func)
+                })
+        }
+
+        CFilter { func, list } => {
+            charge_gas("eval-filter", MilliGas(10))
+                .bind(move |_| {
+                    // Evaluate the function expression first
+                    let filter_builtin_cont = BuiltinCont::FilterBuiltinC {
+                        list_expr: *list,
+                    };
+                    let builtin_cont = Cont::BuiltinC {
+                        env: env.clone(),
+                        info,
+                        builtin_cont: filter_builtin_cont,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(builtin_cont, handler, env, *func)
+                })
+        }
+
+        CFold { func, init, list } => {
+            charge_gas("eval-fold", MilliGas(15))
+                .bind(move |_| {
+                    // Evaluate the function expression first
+                    let fold_builtin_cont = BuiltinCont::FoldBuiltinC {
+                        init_expr: *init,
+                        list_expr: *list,
+                    };
+                    let builtin_cont = Cont::BuiltinC {
+                        env: env.clone(),
+                        info,
+                        builtin_cont: fold_builtin_cont,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(builtin_cont, handler, env, *func)
+                })
+        }
+
+        CZip { func, list1, list2 } => {
+            charge_gas("eval-zip", MilliGas(15))
+                .bind(move |_| {
+                    // Evaluate the function expression first
+                    let zip_builtin_cont = BuiltinCont::ZipBuiltinC {
+                        list1_expr: *list1,
+                        list2_expr: *list2,
+                    };
+                    let builtin_cont = Cont::BuiltinC {
+                        env: env.clone(),
+                        info,
+                        builtin_cont: zip_builtin_cont,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(builtin_cont, handler, env, *func)
+                })
+        }
+
+        CCond { conditions } => {
+            charge_gas("eval-cond", MilliGas(5))
+                .bind(move |_| {
+                    if conditions.is_empty() {
+                        // No conditions - error
+                        EvalM::pure_value(EvalResult::EvalError(
+                            pact_errors::PactError::PEExecutionError(
+                                pact_errors::EvalError::UserError("cond: no conditions provided".to_string()),
+                                vec![],
+                                pact_shared_types::SpanInfo::empty()
+                            )
+                        ))
+                    } else {
+                        // Extract conditions as a vector of pairs
+                        let cond_pairs: Vec<(CoreTerm, CoreTerm)> = conditions.into_iter()
+                            .map(|(cond, expr)| (*cond, *expr))
+                            .collect();
+                        
+                        // Start evaluation with the first condition
+                        let mut remaining = cond_pairs;
+                        let (first_cond, first_expr) = remaining.remove(0);
+                        
+                        // Create cond continuation
+                        let cond_cont = BuiltinCont::CondC {
+                            expr: first_expr,
+                            remaining_conds: remaining,
+                        };
+                        
+                        let builtin_cont = Cont::BuiltinC {
+                            env: env.clone(),
+                            info,
+                            builtin_cont: cond_cont,
+                            cont: Box::new(cont),
+                        };
+                        
+                        // Evaluate first condition
+                        eval_cek(builtin_cont, handler, env, first_cond)
+                    }
+                })
+        }
+
+        CSuspend(expr) => {
+            // Suspend is for defpacts - not yet implemented
+            EvalM::pure_value(EvalResult::EvalError(
+                pact_errors::PactError::PEExecutionError(
+                    pact_errors::EvalError::UnimplementedBuiltin(format!("{} - {}", "suspend", "DefPact functionality not yet implemented")),
+                    vec![],
+                    pact_shared_types::SpanInfo::empty()
+                )
+            ))
+        }
     }
 }
 
@@ -1417,6 +1717,162 @@ pub fn eval_builtin_continuation(
                         found: "closure".to_string(),
                         context: "create-user-guard argument".to_string(),
                     },
+                        vec![],
+                        pact_shared_types::SpanInfo::empty()
+                    )
+                ))
+            }
+        }
+
+        // Map builtin form continuation - evaluates list after function
+        BuiltinCont::MapBuiltinC { list_expr } => {
+            // The value should be the evaluated function
+            match value {
+                CEKValue::VClosure(func) => {
+                    // Now evaluate the list expression
+                    let map_list_cont = Cont::MapListC {
+                        env: env.clone(),
+                        info,
+                        func,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(map_list_cont, handler, env, list_expr)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "function".to_string(),
+                                found: "other".to_string(),
+                                context: "map function".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Filter builtin form continuation - evaluates list after function
+        BuiltinCont::FilterBuiltinC { list_expr } => {
+            // The value should be the evaluated function
+            match value {
+                CEKValue::VClosure(func) => {
+                    // Now evaluate the list expression
+                    let filter_list_cont = Cont::FilterListC {
+                        env: env.clone(),
+                        info,
+                        func,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(filter_list_cont, handler, env, list_expr)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "function".to_string(),
+                                found: "other".to_string(),
+                                context: "filter function".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Fold builtin form continuation - evaluates init and list after function
+        BuiltinCont::FoldBuiltinC { init_expr, list_expr } => {
+            // The value should be the evaluated function
+            match value {
+                CEKValue::VClosure(func) => {
+                    // Now evaluate the init expression
+                    let fold_init_cont = Cont::FoldInitC {
+                        env: env.clone(),
+                        info,
+                        func,
+                        list_expr,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(fold_init_cont, handler, env, init_expr)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "function".to_string(),
+                                found: "other".to_string(),
+                                context: "fold function".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Zip builtin form continuation - evaluates both lists after function
+        BuiltinCont::ZipBuiltinC { list1_expr, list2_expr } => {
+            // The value should be the evaluated function
+            match value {
+                CEKValue::VClosure(func) => {
+                    // Now evaluate the first list expression
+                    let zip_list1_cont = Cont::ZipList1C {
+                        env: env.clone(),
+                        info,
+                        func,
+                        list2_expr,
+                        cont: Box::new(cont),
+                    };
+                    eval_cek(zip_list1_cont, handler, env, list1_expr)
+                }
+                _ => {
+                    EvalM::pure_value(EvalResult::EvalError(
+                        pact_errors::PactError::PEExecutionError(
+                            pact_errors::EvalError::TypeMismatch {
+                                expected: "function".to_string(),
+                                found: "other".to_string(),
+                                context: "zip function".to_string(),
+                            },
+                            vec![],
+                            pact_shared_types::SpanInfo::empty()
+                        )
+                    ))
+                }
+            }
+        }
+
+        // Cond form continuation - evaluates conditions sequentially
+        BuiltinCont::CondC { expr, mut remaining_conds } => {
+            // Check if the condition is true
+            let is_truthy = is_truthy_value(&value);
+            
+            if is_truthy {
+                // Condition is true, evaluate the corresponding expression
+                eval_cek(cont, handler, env, expr)
+            } else if !remaining_conds.is_empty() {
+                // Try the next condition
+                let (next_cond, next_expr) = remaining_conds.remove(0);
+                let cond_cont = BuiltinCont::CondC {
+                    expr: next_expr,
+                    remaining_conds,
+                };
+                let builtin_cont = Cont::BuiltinC {
+                    env: env.clone(),
+                    info,
+                    builtin_cont: cond_cont,
+                    cont: Box::new(cont),
+                };
+                eval_cek(builtin_cont, handler, env, next_cond)
+            } else {
+                // No more conditions and none were true - error
+                EvalM::pure_value(EvalResult::EvalError(
+                    pact_errors::PactError::PEExecutionError(
+                        pact_errors::EvalError::UserError("cond: no condition was satisfied".to_string()),
                         vec![],
                         pact_shared_types::SpanInfo::empty()
                     )

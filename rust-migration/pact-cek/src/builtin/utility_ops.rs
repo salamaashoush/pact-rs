@@ -3,14 +3,11 @@
 //! This module implements utility operations like identity, bind, compose, and cond
 //! following the Haskell reference implementation exactly.
 
-use crate::types::{CEKValue, CEKEnv, BuiltinEnv, BuiltinSpec, NativeFunction};
-use crate::cont::Cont;
-use crate::error::CEKErrorHandler;
-use crate::monad::{EvalM, charge_gas_with_args};
-use crate::eval::{EvalResult, return_cek_value};
+use crate::types::{CEKValue, BuiltinEnv, BuiltinSpec, NativeFunction};
+use crate::monad::charge_gas_with_args;
+use crate::eval::return_cek_value;
 use crate::builtin::{args_error, throw_execution_error};
 use pact_ir::CoreBuiltin;
-use pact_shared_types::SpanInfo;
 use pact_values::PactValue;
 use pact_gas::MilliGas;
 use pact_errors::EvalError;
@@ -42,7 +39,7 @@ pub fn register_utility_builtins(builtin_env: &mut BuiltinEnv) -> Result<(), pac
         CoreBuiltin::CoreCompose,
         BuiltinSpec {
             name: "compose",
-            arity: 2,
+            arity: 3,  // Takes two functions and a value
             implementation: compose_implementation(),
         },
     );
@@ -100,21 +97,31 @@ fn bind_implementation() -> NativeFunction {
 }
 
 /// Function composition - composes two functions
-/// compose :: (b -> c) -> (a -> b) -> (a -> c)
+/// compose :: (b -> c) -> (a -> b) -> a -> c
+/// From Haskell: coreCompose takes 3 args: [VClosure clo1, VClosure clo2, v]
 fn compose_implementation() -> NativeFunction {
     Box::new(|info, _builtin, cont, handler, env, args| {
         charge_gas_with_args("compose", &args, MilliGas(2))
             .bind(move |_| {
-                if args.len() != 2 {
+                if args.len() != 3 {
                     return args_error(info, "compose", &args);
                 }
                 
-                match (&args[0], &args[1]) {
-                    (CEKValue::VClosure(f), CEKValue::VClosure(g)) => {
-                        // Create a new closure that applies g then f
-                        // This requires creating a composed function at runtime
-                        // For now, we'll throw an error as this requires deeper CEK integration
-                        throw_execution_error(info, EvalError::InvalidArgument("compose: Not yet implemented".to_string()))
+                match (&args[0], &args[1], &args[2]) {
+                    (CEKValue::VClosure(f), CEKValue::VClosure(g), value) => {
+                        // Create continuation to apply f after g
+                        // This matches Haskell: let cont' = Fn clo2 env [] [] cont
+                        let fn_cont = crate::cont::Cont::Fn {
+                            function: f.clone(),
+                            env: env.clone(),
+                            args: vec![],
+                            values: vec![],
+                            cont: Box::new(cont),
+                        };
+                        
+                        // Apply g to value with continuation that will apply f
+                        // This matches Haskell: applyLam clo1 [v] cont' handler
+                        crate::eval::apply_lambda(g.clone(), env, vec![value.clone()], fn_cont, handler)
                     }
                     _ => {
                         args_error(info, "compose", &args)

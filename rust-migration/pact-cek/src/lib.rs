@@ -200,10 +200,11 @@ pub mod architecture_validation {
         let _cap_cont = Cont::CapInvokeC {
             env: env.clone(),
             info,
-            cap_cont: CapCont::WithCapCont {
-                cap_name: "test-cap".to_string(),
-                cap_args: vec![],
-                body: vec![],
+            cap_cont: CapCont {
+                cap_term: pact_ir::CoreTerm::Constant(pact_ir::Literal::LUnit, info),
+                body_state: CapBodyState {
+                    body_forms: vec![],
+                },
             },
             cont: Box::new(Cont::Mt),
         };
