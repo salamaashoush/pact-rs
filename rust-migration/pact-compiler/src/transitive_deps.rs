@@ -6,9 +6,9 @@
 
 use std::collections::{HashMap, HashSet};
 use pact_ir::{
-    FullyQualifiedName, ModuleName, EvalDef, DefKind, CoreEvalModule, CoreTerm, 
-    Type, CoreBuiltin, DCapMeta, Def, DefCap, DefPact, PactStep,
-    Literal, BuiltinForm, Field, Arg
+    FullyQualifiedName, ModuleName, EvalDef, CoreEvalModule, CoreTerm, 
+    Type, CoreBuiltin, DCapMeta, Def, PactStep,
+    BuiltinForm, Arg
 };
 use pact_gas::{MilliGas, MilliGasLimit};
 use pact_errors::PactError;
@@ -298,6 +298,9 @@ impl TransitiveClosureState {
                     self.traverse_term(expr)?;
                 }
             }
+            BuiltinForm::CSuspend(expr) => {
+                self.traverse_term(expr)?;
+            }
         }
         Ok(())
     }
@@ -310,7 +313,7 @@ impl TransitiveClosureState {
             }
             Def::DCap(defcap) => {
                 // Check managed capability dependencies per Haskell implementation
-                if let Some(DCapMeta::DefManaged(Some((_, ref manager_name)))) = &defcap.meta {
+                if let Some(DCapMeta::DefManaged(Some((_, ref _manager_name)))) = &defcap.meta {
                     // The manager_name is a ParsedName that needs to be resolved
                     // In Haskell, this is handled through FQNameRef::FQName
                     // Since we're in the transitive dependency phase, the name should already be resolved
@@ -396,7 +399,7 @@ pub fn to_fq_dep(
     use pact_ir::ModuleDefKind;
     let (name, kind) = match def {
         Def::Dfun(d) => (d.name.name.clone(), ModuleDefKind::DefFun),
-        Def::DConst(d) => (d.name.clone(), ModuleDefKind::DefConst),
+        Def::DConst(d) => (d.name.name.clone(), ModuleDefKind::DefConst),
         Def::DCap(d) => (d.name.name.clone(), ModuleDefKind::DefCap),
         Def::DSchema(d) => (d.name.clone(), ModuleDefKind::DefSchema),
         Def::DTable(d) => (d.name.clone(), ModuleDefKind::DefTable),
@@ -425,7 +428,7 @@ pub fn get_all_transitive_dependencies(
     all_loaded: &HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, Type, CoreBuiltin, SpanInfo>>,
     current_gas: MilliGas,
     gas_limit: Option<MilliGasLimit>,
-) -> Result<(HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, Type, CoreBuiltin, SpanInfo>>, MilliGas), PactError> {
+) -> Result<(HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, Type, CoreBuiltin, SpanInfo>>, MilliGas), PactError<SpanInfo>> {
     // Create initial dependency set from module's own definitions
     let initial_deps: HashSet<FullyQualifiedName> = module.definitions
         .iter()

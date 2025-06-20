@@ -23,6 +23,7 @@ pact-capability = { path = "../pact-capability" }
 pact-db = { path = "../pact-db" }
 pact-gas = { path = "../pact-gas" }
 pact-schema = { path = "../pact-schema" }
+pact-names = { path = "../pact-names" }
 serde = { workspace = true }
 thiserror = { workspace = true }
 blake2 = "0.10"

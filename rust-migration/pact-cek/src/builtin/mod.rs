@@ -67,6 +67,7 @@ pub mod module_ops;
 pub mod guard_ops;
 pub mod time_ops;
 pub mod error_helpers;
+pub mod utility_ops;
 
 /// Convert CEKValue to ArgTypeError for error reporting
 /// Matches the Haskell pattern of reporting actual argument types
@@ -232,6 +233,9 @@ pub fn register_core_builtins(builtin_env: &mut BuiltinEnv) -> Result<(), pact_e
 
     // Time operations
     time_ops::register_time_builtins(builtin_env)?;
+
+    // Utility operations (identity, bind, compose, cond)
+    utility_ops::register_utility_builtins(builtin_env)?;
 
     Ok(())
 }

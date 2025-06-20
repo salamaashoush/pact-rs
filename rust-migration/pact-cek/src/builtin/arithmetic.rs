@@ -224,6 +224,44 @@ pub fn register_arithmetic_builtins(builtin_env: &mut BuiltinEnv) -> Result<(), 
     },
   );
 
+  // Precision rounding operations
+  builtin_env.register(
+    CoreBuiltin::CoreRoundPrec,
+    BuiltinSpec {
+      name: "round",
+      arity: 2,
+      implementation: round_prec_implementation(),
+    },
+  );
+
+  builtin_env.register(
+    CoreBuiltin::CoreCeilingPrec,
+    BuiltinSpec {
+      name: "ceiling",
+      arity: 2,
+      implementation: ceiling_prec_implementation(),
+    },
+  );
+
+  builtin_env.register(
+    CoreBuiltin::CoreFloorPrec,
+    BuiltinSpec {
+      name: "floor",
+      arity: 2,
+      implementation: floor_prec_implementation(),
+    },
+  );
+
+  // Decimal conversion
+  builtin_env.register(
+    CoreBuiltin::CoreDec,
+    BuiltinSpec {
+      name: "dec",
+      arity: 1,
+      implementation: dec_implementation(),
+    },
+  );
+
   Ok(())
 }
 
@@ -1084,4 +1122,182 @@ fn decimal_log_base(base: &Decimal, arg: &Decimal) -> Result<Decimal, String> {
   } else {
     Ok(Decimal::from_f64(result_f64))
   }
+}
+
+/// Round with precision implementation
+fn round_prec_implementation() -> NativeFunction {
+  Box::new(|info, _builtin, cont, handler, _env, args| {
+    charge_gas_with_args("round", &args, MilliGas(3))
+      .bind(move |_| {
+        if args.len() != 2 {
+          return args_error(info, "round", &args);
+        }
+        
+        match (args[0].as_pact_value(), args[1].as_pact_value()) {
+            (Some(PactValue::Decimal(d)), Some(PactValue::Integer(prec))) => {
+              if let Some(prec_i32) = prec.to_i32() {
+                if prec_i32 < 0 || prec_i32 > 255 {
+                  throw_execution_error(info, EvalError::InvalidArgument("Precision must be between 0 and 255".to_string()))
+                } else {
+                  let result = d.round_to_precision(prec_i32 as u32);
+                  let result = CEKValue::VPactValue(PactValue::Decimal(result));
+                  return_cek_value(cont, handler, result)
+                }
+              } else {
+                throw_execution_error(info, EvalError::InvalidArgument("Precision too large".to_string()))
+              }
+            }
+            (Some(PactValue::Integer(i)), Some(PactValue::Integer(prec))) => {
+              if let Some(prec_i32) = prec.to_i32() {
+                if prec_i32 < 0 || prec_i32 > 255 {
+                  throw_execution_error(info, EvalError::InvalidArgument("Precision must be between 0 and 255".to_string()))
+                } else {
+                  let d = Decimal::from(i.clone());
+                  let result = d.round_to_precision(prec_i32 as u32);
+                  let result = CEKValue::VPactValue(PactValue::Decimal(result));
+                  return_cek_value(cont, handler, result)
+                }
+              } else {
+                throw_execution_error(info, EvalError::InvalidArgument("Precision too large".to_string()))
+              }
+            }
+            _ => {
+              // Use argsError for type mismatches - matches Haskell pattern exactly
+              args_error(info, "round", &args)
+            }
+          }
+      })
+      .try_with(|error| {
+        unwind_capability_stack(&error).bind(|_| EvalM::pure_value(EvalResult::EvalError(error)))
+      })
+  })
+}
+
+/// Ceiling with precision implementation
+fn ceiling_prec_implementation() -> NativeFunction {
+  Box::new(|info, _builtin, cont, handler, _env, args| {
+    charge_gas_with_args("ceiling", &args, MilliGas(3))
+      .bind(move |_| {
+        if args.len() != 2 {
+          return args_error(info, "ceiling", &args);
+        }
+        
+        match (args[0].as_pact_value(), args[1].as_pact_value()) {
+            (Some(PactValue::Decimal(d)), Some(PactValue::Integer(prec))) => {
+              if let Some(prec_i32) = prec.to_i32() {
+                if prec_i32 < 0 || prec_i32 > 255 {
+                  throw_execution_error(info, EvalError::InvalidArgument("Precision must be between 0 and 255".to_string()))
+                } else {
+                  let result = d.ceil_to_precision(prec_i32 as u32);
+                  let result = CEKValue::VPactValue(PactValue::Decimal(result));
+                  return_cek_value(cont, handler, result)
+                }
+              } else {
+                throw_execution_error(info, EvalError::InvalidArgument("Precision too large".to_string()))
+              }
+            }
+            (Some(PactValue::Integer(i)), Some(PactValue::Integer(prec))) => {
+              if let Some(prec_i32) = prec.to_i32() {
+                if prec_i32 < 0 || prec_i32 > 255 {
+                  throw_execution_error(info, EvalError::InvalidArgument("Precision must be between 0 and 255".to_string()))
+                } else {
+                  let d = Decimal::from(i.clone());
+                  let result = d.ceil_to_precision(prec_i32 as u32);
+                  let result = CEKValue::VPactValue(PactValue::Decimal(result));
+                  return_cek_value(cont, handler, result)
+                }
+              } else {
+                throw_execution_error(info, EvalError::InvalidArgument("Precision too large".to_string()))
+              }
+            }
+            _ => {
+              // Use argsError for type mismatches - matches Haskell pattern exactly
+              args_error(info, "ceiling", &args)
+            }
+          }
+      })
+      .try_with(|error| {
+        unwind_capability_stack(&error).bind(|_| EvalM::pure_value(EvalResult::EvalError(error)))
+      })
+  })
+}
+
+/// Floor with precision implementation
+fn floor_prec_implementation() -> NativeFunction {
+  Box::new(|info, _builtin, cont, handler, _env, args| {
+    charge_gas_with_args("floor", &args, MilliGas(3))
+      .bind(move |_| {
+        if args.len() != 2 {
+          return args_error(info, "floor", &args);
+        }
+        
+        match (args[0].as_pact_value(), args[1].as_pact_value()) {
+            (Some(PactValue::Decimal(d)), Some(PactValue::Integer(prec))) => {
+              if let Some(prec_i32) = prec.to_i32() {
+                if prec_i32 < 0 || prec_i32 > 255 {
+                  throw_execution_error(info, EvalError::InvalidArgument("Precision must be between 0 and 255".to_string()))
+                } else {
+                  let result = d.floor_to_precision(prec_i32 as u32);
+                  let result = CEKValue::VPactValue(PactValue::Decimal(result));
+                  return_cek_value(cont, handler, result)
+                }
+              } else {
+                throw_execution_error(info, EvalError::InvalidArgument("Precision too large".to_string()))
+              }
+            }
+            (Some(PactValue::Integer(i)), Some(PactValue::Integer(prec))) => {
+              if let Some(prec_i32) = prec.to_i32() {
+                if prec_i32 < 0 || prec_i32 > 255 {
+                  throw_execution_error(info, EvalError::InvalidArgument("Precision must be between 0 and 255".to_string()))
+                } else {
+                  let d = Decimal::from(i.clone());
+                  let result = d.floor_to_precision(prec_i32 as u32);
+                  let result = CEKValue::VPactValue(PactValue::Decimal(result));
+                  return_cek_value(cont, handler, result)
+                }
+              } else {
+                throw_execution_error(info, EvalError::InvalidArgument("Precision too large".to_string()))
+              }
+            }
+            _ => {
+              // Use argsError for type mismatches - matches Haskell pattern exactly
+              args_error(info, "floor", &args)
+            }
+          }
+      })
+      .try_with(|error| {
+        unwind_capability_stack(&error).bind(|_| EvalM::pure_value(EvalResult::EvalError(error)))
+      })
+  })
+}
+
+/// Decimal conversion implementation
+fn dec_implementation() -> NativeFunction {
+  Box::new(|info, _builtin, cont, handler, _env, args| {
+    charge_gas_with_args("dec", &args, MilliGas(1))
+      .bind(move |_| {
+        if args.len() != 1 {
+          return args_error(info, "dec", &args);
+        }
+        
+        match args[0].as_pact_value() {
+            Some(PactValue::Integer(i)) => {
+              let result = CEKValue::VPactValue(PactValue::Decimal(Decimal::from(i.clone())));
+              return_cek_value(cont, handler, result)
+            }
+            Some(PactValue::Decimal(d)) => {
+              // Already a decimal, just return it
+              let result = CEKValue::VPactValue(PactValue::Decimal(d.clone()));
+              return_cek_value(cont, handler, result)
+            }
+            _ => {
+              // Use argsError for type mismatches - matches Haskell pattern exactly
+              args_error(info, "dec", &args)
+            }
+          }
+      })
+      .try_with(|error| {
+        unwind_capability_stack(&error).bind(|_| EvalM::pure_value(EvalResult::EvalError(error)))
+      })
+  })
 }

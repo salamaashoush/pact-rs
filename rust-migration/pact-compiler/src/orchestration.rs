@@ -127,7 +127,12 @@ pub fn compile_parsed_top_level(
     let const_evaled = eval_top_level_constants(desugared.result, &mut ctx.const_eval_ctx)?;
 
     // Stage 4: Module Hashing
-    let hashed = hash_top_level(const_evaled, &mut ctx.hash_ctx)?;
+    let hashed = hash_top_level(const_evaled, &mut ctx.hash_ctx)
+        .map_err(|e| PactError::PEExecutionError(
+            pact_errors::EvalError::RuntimeError(format!("Failed to hash module: {}", e)),
+            vec![],
+            pact_parser::SpanInfo::empty()
+        ))?;
 
     Ok(hashed)
 }

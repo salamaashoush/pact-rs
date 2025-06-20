@@ -600,7 +600,7 @@ fn apply_user_function(
 }
 
 /// Apply lambda closure
-fn apply_lambda_closure(
+pub fn apply_lambda_closure(
     lambda: LamClosure,
     args: Vec<CEKValue>,
     cont: Cont,

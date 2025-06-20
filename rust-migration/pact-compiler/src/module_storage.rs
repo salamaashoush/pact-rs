@@ -5,8 +5,8 @@
 
 use pact_ir::{
     CoreModuleData, CoreEvalModule, CoreEvalInterface, ModuleData, EvalModule, EvalInterface,
-    ModuleName, ModuleHash, Hash as TxHash, FullyQualifiedName, TopLevel, EvalDef, DefKind,
-    ModuleCode
+    ModuleName as IrModuleName, ModuleHash, Hash as TxHash, FullyQualifiedName, TopLevel, EvalDef, DefKind,
+    ModuleCode, NamespaceName
 };
 use pact_db::{PactDb, DbResult};
 use pact_errors::PactError;
@@ -14,8 +14,24 @@ use pact_parser::SpanInfo;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Convert IR ModuleName to DB ModuleName
+fn ir_module_name_to_db(ir_name: &IrModuleName) -> pact_names::ModuleName {
+    match &ir_name.namespace {
+        Some(ns) => pact_names::ModuleName::namespaced(ns.0.to_string(), ir_name.name.to_string()),
+        None => pact_names::ModuleName::simple(ir_name.name.to_string()),
+    }
+}
+
+/// Convert DB ModuleName to IR ModuleName
+fn db_module_name_to_ir(db_name: &pact_names::ModuleName) -> IrModuleName {
+    IrModuleName {
+        name: db_name.name.clone().into(),
+        namespace: db_name.namespace.as_ref().map(|ns| NamespaceName(ns.clone().into())),
+    }
+}
+
 /// Module storage manager that handles persistence and dependency tracking
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ModuleStorageManager {
     /// Database instance for storage
     pub db: Arc<dyn PactDb>,
@@ -53,7 +69,7 @@ impl ModuleStorageManager {
             gas_limit,
         )?;
         // Create ModuleData for storage
-        let module_data = ModuleData::ModuleData {
+        let module_data = pact_ir::ModulePersistenceData::ModuleData {
             module: compiled_module.clone(),
             dependencies,
         };
@@ -67,7 +83,7 @@ impl ModuleStorageManager {
             ))?;
 
         // Store module source code
-        self.db.write_module_source(&compiled_module.name, &compiled_module.hash, source_code)
+        self.db.write_module_source(&ir_module_name_to_db(&compiled_module.name), &compiled_module.hash, source_code)
             .map_err(|e| PactError::PEExecutionError(
                 pact_errors::EvalError::RuntimeError(format!("Failed to store module source: {}", e)),
                 vec![],
@@ -89,7 +105,7 @@ impl ModuleStorageManager {
         // But we still need to convert all_loaded to the appropriate format
         let dependencies = all_loaded.clone();
         // Create ModuleData for storage
-        let module_data = ModuleData::InterfaceData {
+        let module_data = pact_ir::ModulePersistenceData::InterfaceData {
             interface: compiled_interface.clone(),
             dependencies,
         };
@@ -103,7 +119,7 @@ impl ModuleStorageManager {
             ))?;
 
         // Store interface source code
-        self.db.write_module_source(&compiled_interface.name, &compiled_interface.hash, source_code)
+        self.db.write_module_source(&ir_module_name_to_db(&compiled_interface.name), &compiled_interface.hash, source_code)
             .map_err(|e| PactError::PEExecutionError(
                 pact_errors::EvalError::RuntimeError(format!("Failed to store interface source: {}", e)),
                 vec![],
@@ -114,8 +130,8 @@ impl ModuleStorageManager {
     }
 
     /// Load a module from the database
-    pub fn load_module(&self, module_name: &ModuleName) -> Result<Option<CoreModuleData>, PactError<SpanInfo>> {
-        self.db.read_module(module_name)
+    pub fn load_module(&self, module_name: &IrModuleName) -> Result<Option<CoreModuleData>, PactError<SpanInfo>> {
+        self.db.read_module(&ir_module_name_to_db(module_name))
             .map_err(|e| PactError::PEExecutionError(
                 pact_errors::EvalError::RuntimeError(format!("Failed to load module {}: {}", module_name, e)),
                 vec![],
@@ -124,8 +140,8 @@ impl ModuleStorageManager {
     }
 
     /// Check if a module exists in the database
-    pub fn module_exists(&self, module_name: &ModuleName) -> Result<bool, PactError<SpanInfo>> {
-        self.db.module_exists(module_name)
+    pub fn module_exists(&self, module_name: &IrModuleName) -> Result<bool, PactError<SpanInfo>> {
+        self.db.module_exists(&ir_module_name_to_db(module_name))
             .map_err(|e| PactError::PEExecutionError(
                 pact_errors::EvalError::RuntimeError(format!("Failed to check module existence {}: {}", module_name, e)),
                 vec![],
@@ -134,8 +150,9 @@ impl ModuleStorageManager {
     }
 
     /// Get all loaded modules
-    pub fn list_all_modules(&self) -> Result<Vec<ModuleName>, PactError<SpanInfo>> {
+    pub fn list_all_modules(&self) -> Result<Vec<IrModuleName>, PactError<SpanInfo>> {
         self.db.list_modules()
+            .map(|db_modules| db_modules.into_iter().map(|m| db_module_name_to_ir(&m)).collect())
             .map_err(|e| PactError::PEExecutionError(
                 pact_errors::EvalError::RuntimeError(format!("Failed to list modules: {}", e)),
                 vec![],
@@ -144,8 +161,8 @@ impl ModuleStorageManager {
     }
 
     /// Load module source code
-    pub fn load_module_source(&self, module_name: &ModuleName, hash: &ModuleHash) -> Result<Option<String>, PactError<SpanInfo>> {
-        self.db.read_module_source(module_name, hash)
+    pub fn load_module_source(&self, module_name: &IrModuleName, hash: &ModuleHash) -> Result<Option<String>, PactError<SpanInfo>> {
+        self.db.read_module_source(&ir_module_name_to_db(module_name), hash)
             .map_err(|e| PactError::PEExecutionError(
                 pact_errors::EvalError::RuntimeError(format!("Failed to load module source {}: {}", module_name, e)),
                 vec![],
@@ -160,26 +177,42 @@ impl ModuleStorageManager {
     ) -> Result<String, PactError<SpanInfo>> {
         match result {
             TopLevel::TLModule(module) => {
+                // Compute module hash
+                let module_hash = crate::module_hash::compute_module_hash_for_module(module, source_code)
+                    .map_err(|e| PactError::PEExecutionError(
+                        pact_errors::EvalError::RuntimeError(format!("Failed to compute module hash: {}", e)),
+                        vec![],
+                        SpanInfo::empty()
+                    ))?;
+                
                 // Convert IR module to EvalModule
-                let eval_module = convert_ir_module_to_eval_module(module, &self.current_tx_hash, source_code);
+                let eval_module = convert_ir_module_to_eval_module(module, &self.current_tx_hash, source_code, module_hash);
                 
                 // Compute dependencies
                 let dependencies = compute_module_dependencies(&eval_module)?;
                 
                 // Store module
-                self.store_module(&eval_module, dependencies, source_code)?;
+                self.store_module(&eval_module, &dependencies, source_code, pact_gas::MilliGas(0), None)?;
                 
                 Ok(format!("Module {} loaded and stored", eval_module.name))
             }
             TopLevel::TLInterface(interface) => {
+                // Compute interface hash
+                let interface_hash = crate::module_hash::compute_interface_hash_for_interface(interface, source_code)
+                    .map_err(|e| PactError::PEExecutionError(
+                        pact_errors::EvalError::RuntimeError(format!("Failed to compute interface hash: {}", e)),
+                        vec![],
+                        SpanInfo::empty()
+                    ))?;
+                
                 // Convert IR interface to EvalInterface
-                let eval_interface = convert_ir_interface_to_eval_interface(interface, &self.current_tx_hash, source_code);
+                let eval_interface = convert_ir_interface_to_eval_interface(interface, &self.current_tx_hash, source_code, interface_hash);
                 
                 // Compute dependencies
                 let dependencies = compute_interface_dependencies(&eval_interface)?;
                 
                 // Store interface
-                self.store_interface(&eval_interface, dependencies, source_code)?;
+                self.store_interface(&eval_interface, &dependencies, source_code, pact_gas::MilliGas(0), None)?;
                 
                 Ok(format!("Interface {} loaded and stored", eval_interface.name))
             }
@@ -199,16 +232,41 @@ impl ModuleStorageManager {
 fn convert_ir_module_to_eval_module(
     ir_module: &pact_ir::Module<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
     tx_hash: &TxHash,
-    source_code: &str
+    source_code: &str,
+    module_hash: ModuleHash,
 ) -> EvalModule<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo> {
+    use std::collections::HashSet;
+    
+    // Extract blessed hashes from ExtDecl::ExtBless
+    let mut blessed = HashSet::new();
+    let mut imports = Vec::new();
+    let mut implements = Vec::new();
+    
+    for decl in &ir_module.imports {
+        match decl {
+            pact_ir::ExtDecl::ExtBless { hash, .. } => {
+                blessed.insert(ModuleHash(hash.clone()));
+            }
+            pact_ir::ExtDecl::ExtImport(import) => {
+                imports.push(import.clone());
+            }
+            pact_ir::ExtDecl::ExtImplements { module: mod_name, .. } => {
+                implements.push(mod_name.clone());
+            }
+        }
+    }
+    
     EvalModule {
-        name: ir_module.name.clone(),
+        name: IrModuleName {
+            name: ir_module.name.clone(),
+            namespace: None,
+        },
         governance: ir_module.governance.clone(),
         definitions: ir_module.definitions.clone(),
-        blessed: std::collections::HashSet::new(), // Extract from ExtDecl::ExtBless during proper parsing
-        imports: extract_imports_from_ext_decls(&ir_module.imports),
-        implements: extract_implements_from_ext_decls(&ir_module.imports),
-        hash: ir_module.hash.clone(),
+        blessed,
+        imports,
+        implements,
+        hash: module_hash,
         tx_hash: tx_hash.clone(),
         code: ModuleCode::new(source_code),
         info: ir_module.info.clone(),
@@ -219,14 +277,64 @@ fn convert_ir_module_to_eval_module(
 fn convert_ir_interface_to_eval_interface(
     ir_interface: &pact_ir::Interface<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
     tx_hash: &TxHash,
-    source_code: &str
+    source_code: &str,
+    interface_hash: ModuleHash,
 ) -> EvalInterface<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo> {
+    use std::collections::HashSet;
+    
+    // Extract blessed hashes and imports from imports
+    let mut blessed = HashSet::new();
+    let mut imports = Vec::new();
+    
+    // Interface imports are just Import structs, not an enum
+    for import_item in &ir_interface.imports {
+        imports.push(import_item.clone());
+    }
+    
+    // Convert interface definitions (IfDef) to regular definitions (Def)
+    let definitions = ir_interface.definitions.iter().map(|ifdef| {
+        match ifdef {
+            pact_ir::IfDef::IfDfun(ifdfun) => pact_ir::Def::Dfun(pact_ir::Defun {
+                name: ifdfun.name.clone(),
+                args: ifdfun.args.clone(),
+                body: pact_ir::Term::Constant(pact_ir::Literal::LUnit, ifdfun.info.clone()), // Placeholder body for interface
+                annotations: ifdfun.annotations.clone(),
+                info: ifdfun.info.clone(),
+            }),
+            pact_ir::IfDef::IfDCap(ifdcap) => pact_ir::Def::DCap(pact_ir::DefCap {
+                name: ifdcap.name.clone(),
+                args: ifdcap.args.clone(),
+                body: pact_ir::Term::Constant(pact_ir::Literal::LUnit, ifdcap.info.clone()), // Placeholder body for interface
+                meta: ifdcap.meta.clone(),
+                annotations: ifdcap.annotations.clone(),
+                info: ifdcap.info.clone(),
+            }),
+            pact_ir::IfDef::IfDPact(ifdpact) => pact_ir::Def::DPact(pact_ir::DefPact {
+                name: ifdpact.name.clone(),
+                args: ifdpact.args.clone(),
+                steps: vec![], // Empty steps for interface
+                annotations: ifdpact.annotations.clone(),
+                info: ifdpact.info.clone(),
+            }),
+            pact_ir::IfDef::IfDConst(ifdconst) => pact_ir::Def::DConst(pact_ir::DefConst {
+                name: ifdconst.name.clone(),
+                value: pact_ir::Term::Constant(pact_ir::Literal::LUnit, ifdconst.info.clone()), // Placeholder value
+                doc: None,
+                info: ifdconst.info.clone(),
+            }),
+            pact_ir::IfDef::IfDSchema(ifdschema) => pact_ir::Def::DSchema(ifdschema.clone()),
+        }
+    }).collect();
+    
     EvalInterface {
-        name: ir_interface.name.clone(),
-        definitions: ir_interface.definitions.clone(),
-        blessed: std::collections::HashSet::new(), // Extract from ExtDecl::ExtBless during proper parsing
-        imports: extract_imports_from_ext_decls(&ir_interface.imports),
-        hash: ir_interface.hash.clone(),
+        name: IrModuleName {
+            name: ir_interface.name.clone(),
+            namespace: None,
+        },
+        definitions,
+        blessed,
+        imports,
+        hash: interface_hash,
         tx_hash: tx_hash.clone(),
         code: ModuleCode::new(source_code),
         info: ir_interface.info.clone(),
@@ -249,7 +357,7 @@ fn extract_imports_from_ext_decls(
 /// Extract implemented interfaces from ExtDecl list
 fn extract_implements_from_ext_decls(
     ext_decls: &[pact_ir::ExtDecl<pact_parser::SpanInfo>]
-) -> Vec<ModuleName> {
+) -> Vec<IrModuleName> {
     let mut implements = Vec::new();
     for decl in ext_decls {
         if let pact_ir::ExtDecl::ExtImplements { module: mod_name, .. } = decl {
