@@ -17,7 +17,7 @@ use pact_ir::{
 };
 use pact_eval::{eval_top_level_constants, ConstEvalContext};
 use crate::module_hash::{hash_top_level, ModuleHashContext};
-use pact_parser::{Parser, ParsedTopLevel};
+use pact_parser::{Parser, ParsedTopLevel, SpanInfo};
 use pact_errors::PactError;
 
 /// Complete compilation result
@@ -85,7 +85,7 @@ impl CompilationContext {
 pub fn compile_top_level(
     source_code: &str,
     ctx: &mut CompilationContext,
-) -> Result<CompileResult, PactError> {
+) -> Result<CompileResult, PactError<SpanInfo>> {
     let start_time = std::time::Instant::now();
 
     // Stage 1: Parse (Lexing + Parsing)
@@ -118,7 +118,7 @@ pub fn compile_top_level(
 pub fn compile_parsed_top_level(
     parsed_toplevel: ParsedTopLevel<pact_parser::SpanInfo>,
     ctx: &mut CompilationContext,
-) -> Result<TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>, PactError> {
+) -> Result<TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>, PactError<SpanInfo>> {
     // Stage 2: Desugar + Rename (ParseTree -> Core IR with resolved names)
     // This combines desugaring and name resolution in one step, matching Haskell
     let desugared = desugar_top_level(parsed_toplevel, &mut ctx.desugar_ctx)?;
@@ -134,24 +134,30 @@ pub fn compile_parsed_top_level(
 
 /// Parse source code to get the initial AST
 /// This combines lexing and parsing stages
-fn parse_source_code(source_code: &str) -> Result<ParsedTopLevel<pact_parser::SpanInfo>, PactError> {
+fn parse_source_code(source_code: &str) -> Result<ParsedTopLevel<pact_parser::SpanInfo>, PactError<SpanInfo>> {
     // Create parser (which handles lexing internally)
     let mut parser = Parser::new(source_code)
-        .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::UserError {
-            message: format!("Parser creation failed: {:?}", e),
-        }))?;
+        .map_err(|e| PactError::PEExecutionError(
+            pact_errors::EvalError::UserError(format!("Parser creation failed: {:?}", e)),
+            vec![],
+            SpanInfo::empty()
+        ))?;
 
     // Parse the complete program
     let program = parser.parse_program()
-        .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::UserError {
-            message: format!("Parsing failed: {:?}", e),
-        }))?;
+        .map_err(|e| PactError::PEExecutionError(
+            pact_errors::EvalError::UserError(format!("Parsing failed: {:?}", e)),
+            vec![],
+            SpanInfo::empty()
+        ))?;
 
     // Handle multiple top-level items like Haskell does
     match program.len() {
-        0 => Err(PactError::Runtime(pact_errors::RuntimeError::UserError {
-            message: "No top-level items found in source code".to_string(),
-        })),
+        0 => Err(PactError::PEExecutionError(
+            pact_errors::EvalError::UserError("No top-level items found in source code".to_string()),
+            vec![],
+            SpanInfo::empty()
+        )),
         1 => Ok(program.into_iter().next().unwrap()),
         _ => {
             // Multiple top-level items: collect all expressions
@@ -221,7 +227,7 @@ fn create_block_expression(
 pub fn compile_multiple_sources(
     sources: Vec<(&str, &str)>, // (filename, source_code) pairs
     ctx: &mut CompilationContext,
-) -> Result<Vec<CompileResult>, PactError> {
+) -> Result<Vec<CompileResult>, PactError<SpanInfo>> {
     let mut results = Vec::new();
 
     // For now, compile in the order provided
@@ -232,9 +238,11 @@ pub fn compile_multiple_sources(
                 results.push(result);
             }
             Err(e) => {
-                return Err(PactError::Runtime(pact_errors::RuntimeError::UserError {
-                    message: format!("Compilation failed for {}: {}", filename, e),
-                }));
+                return Err(PactError::PEExecutionError(
+                    pact_errors::EvalError::UserError(format!("Compilation failed for {}: {}", filename, e)),
+                    vec![],
+                    SpanInfo::empty()
+                ));
             }
         }
     }
@@ -259,7 +267,7 @@ pub fn module_depends_on(
 pub fn compile_desugar_only(
     source_code: &str,
     ctx: &mut CompilationContext,
-) -> Result<TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>, PactError> {
+) -> Result<TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>, PactError<SpanInfo>> {
     // Stage 1: Parse
     let parsed_toplevel = parse_source_code(source_code)?;
 

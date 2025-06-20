@@ -4,7 +4,7 @@
 //! Haskell implementation exactly. Modules are hashed using CBOR serialization
 //! and Blake2b-256 to create deterministic module hashes.
 
-use pact_ir::{EvalModule, ModuleHash, Hash, Name, Type, CoreBuiltin, SpanInfo, CoreModuleData, ModuleName, FullyQualifiedName};
+use pact_ir::{EvalModule, ModuleHash, Hash, Name, Type, CoreBuiltin, SpanInfo, CoreModuleData, ModuleName, FullyQualifiedName, TopLevel};
 use serde::Serialize;
 use std::collections::HashMap;
 use blake2::{Blake2b512, Digest};
@@ -334,6 +334,87 @@ pub fn update_module_dependencies(
     }
     
     Ok(())
+}
+
+/// Module hashing context for tracking statistics
+#[derive(Debug, Clone, Default)]
+pub struct ModuleHashContext {
+    /// Number of modules hashed
+    pub modules_hashed: usize,
+    /// Number of interfaces hashed
+    pub interfaces_hashed: usize,
+    /// Total bytes hashed
+    pub total_bytes_hashed: usize,
+}
+
+impl ModuleHashContext {
+    /// Create a new module hash context
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Get statistics
+    pub fn stats(&self) -> ModuleHashStats {
+        ModuleHashStats {
+            modules_hashed: self.modules_hashed,
+            interfaces_hashed: self.interfaces_hashed,
+            total_bytes_hashed: self.total_bytes_hashed,
+        }
+    }
+}
+
+/// Module hashing statistics
+#[derive(Debug, Clone, Default)]
+pub struct ModuleHashStats {
+    /// Number of modules hashed
+    pub modules_hashed: usize,
+    /// Number of interfaces hashed
+    pub interfaces_hashed: usize,
+    /// Total bytes hashed
+    pub total_bytes_hashed: usize,
+}
+
+/// Hash a top-level item (module or interface)
+pub fn hash_top_level(
+    top_level: TopLevel<Name, Type, CoreBuiltin, SpanInfo>,
+    ctx: &mut ModuleHashContext,
+) -> Result<TopLevel<Name, Type, CoreBuiltin, SpanInfo>, ModuleHashError> {
+    match top_level {
+        TopLevel::TLModule(mut module) => {
+            // Convert to EvalModule for hashing
+            let mut eval_module = pact_ir::EvalModule::from(module.clone());
+            
+            // Compute the hash
+            let hash = compute_module_hash(&eval_module)?;
+            
+            // Update statistics
+            ctx.modules_hashed += 1;
+            ctx.total_bytes_hashed += eval_module.code.as_str().len();
+            
+            // Update the module with the computed hash
+            eval_module.hash = hash.clone();
+            update_module_hash_references(&mut eval_module, &ModuleHash("placeholder".into()), &hash)?;
+            
+            // Convert back to regular Module
+            module.hash = hash;
+            
+            Ok(TopLevel::TLModule(module))
+        }
+        TopLevel::TLInterface(mut interface) => {
+            // For interfaces, we need similar hashing but adapted for interface structure
+            // For now, just create a placeholder hash
+            let hash = ModuleHash(format!("interface-hash-{}", interface.name));
+            interface.hash = hash;
+            
+            ctx.interfaces_hashed += 1;
+            
+            Ok(TopLevel::TLInterface(interface))
+        }
+        other => {
+            // Terms and imports don't need hashing
+            Ok(other)
+        }
+    }
 }
 
 #[cfg(test)]

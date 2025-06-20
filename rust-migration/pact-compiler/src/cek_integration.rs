@@ -7,6 +7,7 @@ use pact_values::PactValue;
 use pact_errors::PactError;
 use pact_ir::{TopLevel, CoreTerm};
 use pact_cek::CEKValue;
+use pact_parser::SpanInfo;
 use crate::orchestration::CompilationContext;
 use crate::module_storage::ModuleStorageManager;
 use pact_db::MockDb;
@@ -16,7 +17,7 @@ use std::sync::Arc;
 pub fn evaluate_with_cek(
     top_level: &TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
     ctx: &mut CompilationContext,
-) -> Result<PactValue, PactError> {
+) -> Result<PactValue, PactError<SpanInfo>> {
     evaluate_with_cek_and_storage(top_level, ctx, None)
 }
 
@@ -25,7 +26,7 @@ pub fn evaluate_with_cek_and_storage(
     top_level: &TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
     _ctx: &mut CompilationContext,
     storage_manager: Option<ModuleStorageManager>,
-) -> Result<PactValue, PactError> {
+) -> Result<PactValue, PactError<SpanInfo>> {
     use pact_cek::{CEKEnv, BuiltinEnv, CEKValue, EvalResult, eval_cek, Cont, CEKErrorHandler};
     use pact_cek::{EvalM, EvalMEnv, EvalState};
     
@@ -59,7 +60,7 @@ pub fn evaluate_with_cek_and_storage(
 }
 
 /// Evaluate a Core IR term using the CEK machine with module storage context
-fn evaluate_core_term_with_storage(term: &CoreTerm, storage: &ModuleStorageManager) -> Result<PactValue, PactError> {
+fn evaluate_core_term_with_storage(term: &CoreTerm, storage: &ModuleStorageManager) -> Result<PactValue, PactError<SpanInfo>> {
     use pact_cek::{CEKEnv, BuiltinEnv, CEKValue, EvalResult, eval_cek, Cont, CEKErrorHandler};
     use pact_cek::{EvalM, EvalMEnv, EvalState, register_core_builtins};
     use std::sync::Arc;
@@ -138,7 +139,7 @@ impl pact_cek::PactDb for SimpleMockDb {
 }
 
 /// Convert CEK value to PactValue
-fn cek_value_to_pact_value(cek_value: CEKValue) -> Result<PactValue, PactError> {
+fn cek_value_to_pact_value(cek_value: CEKValue) -> Result<PactValue, PactError<SpanInfo>> {
     match cek_value {
         CEKValue::VPactValue(pact_value) => Ok(pact_value),
         CEKValue::VClosure(_) => {

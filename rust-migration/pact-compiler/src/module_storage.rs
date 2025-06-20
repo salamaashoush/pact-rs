@@ -10,6 +10,7 @@ use pact_ir::{
 };
 use pact_db::{PactDb, DbResult};
 use pact_errors::PactError;
+use pact_parser::SpanInfo;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -43,7 +44,7 @@ impl ModuleStorageManager {
         source_code: &str,
         current_gas: pact_gas::MilliGas,
         gas_limit: Option<pact_gas::MilliGasLimit>,
-    ) -> Result<pact_gas::MilliGas, PactError> {
+    ) -> Result<pact_gas::MilliGas, PactError<SpanInfo>> {
         // Compute transitive dependencies
         let (dependencies, gas_consumed) = crate::transitive_deps::get_all_transitive_dependencies(
             compiled_module,
@@ -59,15 +60,19 @@ impl ModuleStorageManager {
 
         // Store module data
         self.db.write_module(&module_data)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to store module: {}", e),
-            }))?;
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to store module: {}", e)),
+                vec![],
+                SpanInfo::empty()
+            ))?;
 
         // Store module source code
         self.db.write_module_source(&compiled_module.name, &compiled_module.hash, source_code)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to store module source: {}", e),
-            }))?;
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to store module source: {}", e)),
+                vec![],
+                SpanInfo::empty()
+            ))?;
 
         Ok(gas_consumed)
     }
@@ -79,7 +84,7 @@ impl ModuleStorageManager {
         source_code: &str,
         current_gas: pact_gas::MilliGas,
         gas_limit: Option<pact_gas::MilliGasLimit>,
-    ) -> Result<pact_gas::MilliGas, PactError> {
+    ) -> Result<pact_gas::MilliGas, PactError<SpanInfo>> {
         // For interfaces, we don't compute transitive dependencies (they don't have implementations)
         // But we still need to convert all_loaded to the appropriate format
         let dependencies = all_loaded.clone();
@@ -91,56 +96,68 @@ impl ModuleStorageManager {
 
         // Store module data
         self.db.write_module(&module_data)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to store interface: {}", e),
-            }))?;
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to store interface: {}", e)),
+                vec![],
+                SpanInfo::empty()
+            ))?;
 
         // Store interface source code
         self.db.write_module_source(&compiled_interface.name, &compiled_interface.hash, source_code)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to store interface source: {}", e),
-            }))?;
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to store interface source: {}", e)),
+                vec![],
+                SpanInfo::empty()
+            ))?;
 
         Ok(current_gas)
     }
 
     /// Load a module from the database
-    pub fn load_module(&self, module_name: &ModuleName) -> Result<Option<CoreModuleData>, PactError> {
+    pub fn load_module(&self, module_name: &ModuleName) -> Result<Option<CoreModuleData>, PactError<SpanInfo>> {
         self.db.read_module(module_name)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to load module {}: {}", module_name, e),
-            }))
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to load module {}: {}", module_name, e)),
+                vec![],
+                SpanInfo::empty()
+            ))
     }
 
     /// Check if a module exists in the database
-    pub fn module_exists(&self, module_name: &ModuleName) -> Result<bool, PactError> {
+    pub fn module_exists(&self, module_name: &ModuleName) -> Result<bool, PactError<SpanInfo>> {
         self.db.module_exists(module_name)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to check module existence {}: {}", module_name, e),
-            }))
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to check module existence {}: {}", module_name, e)),
+                vec![],
+                SpanInfo::empty()
+            ))
     }
 
     /// Get all loaded modules
-    pub fn list_all_modules(&self) -> Result<Vec<ModuleName>, PactError> {
+    pub fn list_all_modules(&self) -> Result<Vec<ModuleName>, PactError<SpanInfo>> {
         self.db.list_modules()
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to list modules: {}", e),
-            }))
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to list modules: {}", e)),
+                vec![],
+                SpanInfo::empty()
+            ))
     }
 
     /// Load module source code
-    pub fn load_module_source(&self, module_name: &ModuleName, hash: &ModuleHash) -> Result<Option<String>, PactError> {
+    pub fn load_module_source(&self, module_name: &ModuleName, hash: &ModuleHash) -> Result<Option<String>, PactError<SpanInfo>> {
         self.db.read_module_source(module_name, hash)
-            .map_err(|e| PactError::Runtime(pact_errors::RuntimeError::DatabaseError {
-                message: format!("Failed to load module source {}: {}", module_name, e),
-            }))
+            .map_err(|e| PactError::PEExecutionError(
+                pact_errors::EvalError::RuntimeError(format!("Failed to load module source {}: {}", module_name, e)),
+                vec![],
+                SpanInfo::empty()
+            ))
     }
 
     /// Process and store a top-level compilation result
     pub fn process_compilation_result(&self,
         result: &TopLevel<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
         source_code: &str
-    ) -> Result<String, PactError> {
+    ) -> Result<String, PactError<SpanInfo>> {
         match result {
             TopLevel::TLModule(module) => {
                 // Convert IR module to EvalModule
@@ -245,7 +262,7 @@ fn extract_implements_from_ext_decls(
 /// Compute module dependencies by analyzing all definitions
 fn compute_module_dependencies(
     _module: &EvalModule<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>
-) -> Result<HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>, PactError> {
+) -> Result<HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>, PactError<SpanInfo>> {
     // TODO: Implement proper dependency analysis by walking through all terms
     // and collecting references to external modules
     Ok(HashMap::new())
@@ -254,7 +271,7 @@ fn compute_module_dependencies(
 /// Compute interface dependencies by analyzing all definitions
 fn compute_interface_dependencies(
     _interface: &EvalInterface<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>
-) -> Result<HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>, PactError> {
+) -> Result<HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>, PactError<SpanInfo>> {
     // TODO: Implement proper dependency analysis by walking through all terms
     // and collecting references to external modules
     Ok(HashMap::new())

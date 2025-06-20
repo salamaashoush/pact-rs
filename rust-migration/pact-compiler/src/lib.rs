@@ -33,7 +33,7 @@ pub use orchestration::CompileResult as CompilationResult;
 /// 
 /// This function combines compilation and evaluation in one step,
 /// returning both the compilation result and the evaluation result.
-pub fn compile_and_evaluate(source: &str) -> Result<(CompileResult, pact_values::PactValue), pact_errors::PactError> {
+pub fn compile_and_evaluate(source: &str) -> Result<(CompileResult, pact_values::PactValue), pact_errors::PactError<pact_parser::SpanInfo>> {
     // First, compile the source
     let compile_result = compile_pact_source(source)?;
     
@@ -51,7 +51,7 @@ pub fn compile_and_evaluate(source: &str) -> Result<(CompileResult, pact_values:
 pub fn compile_and_evaluate_with_storage(
     source: &str, 
     storage: ModuleStorageManager
-) -> Result<(CompileResult, pact_values::PactValue), pact_errors::PactError> {
+) -> Result<(CompileResult, pact_values::PactValue), pact_errors::PactError<pact_parser::SpanInfo>> {
     // First, compile the source
     let compile_result = compile_pact_source(source)?;
     

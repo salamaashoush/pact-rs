@@ -7,10 +7,11 @@ use crate::orchestration::{compile_top_level, CompilationContext, CompileResult}
 use crate::cek_integration::evaluate_with_cek;
 use pact_errors::PactError;
 use pact_values::PactValue;
+use pact_parser::SpanInfo;
 
 /// Simple function to compile Pact source code to a result
 /// This is the main entry point for most users
-pub fn compile_pact_source(source_code: &str) -> Result<CompileResult, PactError> {
+pub fn compile_pact_source(source_code: &str) -> Result<CompileResult, PactError<SpanInfo>> {
     let mut ctx = CompilationContext::new();
     compile_top_level(source_code, &mut ctx)
 }
@@ -20,12 +21,12 @@ pub fn compile_pact_source(source_code: &str) -> Result<CompileResult, PactError
 pub fn compile_pact_source_with_context(
     source_code: &str,
     ctx: &mut CompilationContext,
-) -> Result<CompileResult, PactError> {
+) -> Result<CompileResult, PactError<SpanInfo>> {
     compile_top_level(source_code, ctx)
 }
 
 /// Compile multiple Pact files
-pub fn compile_pact_files(files: Vec<(&str, &str)>) -> Result<Vec<CompileResult>, PactError> {
+pub fn compile_pact_files(files: Vec<(&str, &str)>) -> Result<Vec<CompileResult>, PactError<SpanInfo>> {
     let mut ctx = CompilationContext::new();
     crate::orchestration::compile_multiple_sources(files, &mut ctx)
 }
@@ -42,7 +43,7 @@ pub fn check_pact_source(source_code: &str) -> bool {
 pub fn compile_and_evaluate(
     source_code: &str,
     ctx: &mut CompilationContext,
-) -> Result<PactValue, PactError> {
+) -> Result<PactValue, PactError<SpanInfo>> {
     // First compile through all stages
     let compile_result = compile_top_level(source_code, ctx)?;
     
