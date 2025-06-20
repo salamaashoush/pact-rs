@@ -36,12 +36,21 @@ impl ModuleStorageManager {
         self.current_tx_hash = tx_hash;
     }
 
-    /// Store a compiled module in the database
+    /// Store a compiled module in the database with transitive dependencies
     pub fn store_module(&self, 
         compiled_module: &EvalModule<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
-        dependencies: HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>,
-        source_code: &str
-    ) -> Result<(), PactError> {
+        all_loaded: &HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>,
+        source_code: &str,
+        current_gas: pact_gas::MilliGas,
+        gas_limit: Option<pact_gas::MilliGasLimit>,
+    ) -> Result<pact_gas::MilliGas, PactError> {
+        // Compute transitive dependencies
+        let (dependencies, gas_consumed) = crate::transitive_deps::get_all_transitive_dependencies(
+            compiled_module,
+            all_loaded,
+            current_gas,
+            gas_limit,
+        )?;
         // Create ModuleData for storage
         let module_data = ModuleData::ModuleData {
             module: compiled_module.clone(),
@@ -60,15 +69,20 @@ impl ModuleStorageManager {
                 message: format!("Failed to store module source: {}", e),
             }))?;
 
-        Ok(())
+        Ok(gas_consumed)
     }
 
     /// Store a compiled interface in the database
     pub fn store_interface(&self,
         compiled_interface: &EvalInterface<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>,
-        dependencies: HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>,
-        source_code: &str
-    ) -> Result<(), PactError> {
+        all_loaded: &HashMap<FullyQualifiedName, EvalDef<pact_ir::Name, pact_ir::Type, pact_ir::CoreBuiltin, pact_parser::SpanInfo>>,
+        source_code: &str,
+        current_gas: pact_gas::MilliGas,
+        gas_limit: Option<pact_gas::MilliGasLimit>,
+    ) -> Result<pact_gas::MilliGas, PactError> {
+        // For interfaces, we don't compute transitive dependencies (they don't have implementations)
+        // But we still need to convert all_loaded to the appropriate format
+        let dependencies = all_loaded.clone();
         // Create ModuleData for storage
         let module_data = ModuleData::InterfaceData {
             interface: compiled_interface.clone(),
@@ -87,7 +101,7 @@ impl ModuleStorageManager {
                 message: format!("Failed to store interface source: {}", e),
             }))?;
 
-        Ok(())
+        Ok(current_gas)
     }
 
     /// Load a module from the database

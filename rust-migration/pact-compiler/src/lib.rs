@@ -17,12 +17,14 @@ pub mod module_hash;
 pub mod module_storage;
 pub mod orchestration;
 pub mod cek_integration;
+pub mod transitive_deps;
 
 pub use compile::*;
 pub use module_hash::*;
 pub use module_storage::*;
 pub use orchestration::*;
 pub use cek_integration::*;
+pub use transitive_deps::*;
 
 // Re-export the CompilationResult type for convenience
 pub use orchestration::CompileResult as CompilationResult;
