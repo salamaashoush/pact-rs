@@ -32,7 +32,7 @@ impl MockPactDb {
 impl PactDb for MockPactDb {
     fn read(&self, domain: Domain, key: RowKey) -> EvalM<Option<RowData>> {
         let table = match &domain {
-            Domain::UserTable(name) => name.clone(),
+            Domain::User(table_name) => table_name.name.clone(),
             _ => "system".to_string(),
         };
         let data = self.data.lock().unwrap();
@@ -49,7 +49,7 @@ impl PactDb for MockPactDb {
 
     fn write(&self, domain: Domain, key: RowKey, data: RowData) -> EvalM<()> {
         let table = match &domain {
-            Domain::UserTable(name) => name.clone(),
+            Domain::User(table_name) => table_name.name.clone(),
             _ => "system".to_string(),
         };
         let mut db_data = self.data.lock().unwrap();
@@ -60,7 +60,7 @@ impl PactDb for MockPactDb {
 
     fn keys(&self, domain: Domain) -> EvalM<Vec<RowKey>> {
         let table = match &domain {
-            Domain::UserTable(name) => name.clone(),
+            Domain::User(table_name) => table_name.name.clone(),
             _ => "system".to_string(),
         };
         let data = self.data.lock().unwrap();
@@ -72,7 +72,7 @@ impl PactDb for MockPactDb {
 
     fn select(&self, domain: Domain, _filter: Option<EvalM<bool>>) -> EvalM<Vec<(RowKey, RowData)>> {
         let table = match &domain {
-            Domain::UserTable(name) => name.clone(),
+            Domain::User(table_name) => table_name.name.clone(),
             _ => "system".to_string(),
         };
         let data = self.data.lock().unwrap();

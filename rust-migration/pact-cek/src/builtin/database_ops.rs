@@ -1,7 +1,7 @@
 use super::*;
 use crate::eval::{apply_function, return_cek_value};
 use crate::monad::{charge_gas, charge_gas_with_args, unwind_capability_stack};
-use crate::types::{ColumnType, Domain, RowData, RowKey, TableSchema, WriteType};
+use crate::types::{ColumnType, Domain, RowData, RowKey, TableSchema, TableName, WriteType};
 use crate::BuiltinCont;
 use pact_values::PactValue;
 
@@ -207,7 +207,7 @@ fn read_implementation() -> NativeFunction {
             // Guard table read
             match guard_table(&env, &name, GuardTableType::Read) {
               Ok(_) => {
-                let domain = Domain::UserTable(name.clone());
+                let domain = Domain::User(TableName::new(name.clone()));
                 let row_key = RowKey(key.clone());
 
                 env
@@ -290,7 +290,7 @@ fn insert_implementation() -> NativeFunction {
                     let data_size = obj.len();
                     charge_gas("write", MilliGas(data_size as u64 + 20))
                       .bind(move |_| {
-                        let domain = Domain::UserTable(name);
+                        let domain = Domain::User(TableName::new(name));
                         let row_key = RowKey(key.clone());
                         let row_data = RowData {
                           fields: obj.to_hashmap(),
@@ -375,7 +375,7 @@ fn write_implementation() -> NativeFunction {
                     let data_size = obj.len();
                     charge_gas("write", MilliGas(data_size as u64 + 20))
                       .bind(move |_| {
-                        let domain = Domain::UserTable(name);
+                        let domain = Domain::User(TableName::new(name));
                         let row_key = RowKey(key.clone());
                         let row_data = RowData {
                           fields: obj.to_hashmap(),
@@ -460,7 +460,7 @@ fn update_implementation() -> NativeFunction {
                     let data_size = obj.len();
                     charge_gas("write", MilliGas(data_size as u64 + 20))
                       .bind(move |_| {
-                        let domain = Domain::UserTable(name);
+                        let domain = Domain::User(TableName::new(name));
                         let row_key = RowKey(key.clone());
                         let row_data = RowData {
                           fields: obj.to_hashmap(),
@@ -532,7 +532,7 @@ fn keys_implementation() -> NativeFunction {
             // Guard table read
             match guard_table(&env, &name, GuardTableType::Keys) {
               Ok(_) => {
-                let domain = Domain::UserTable(name);
+                let domain = Domain::User(TableName::new(name));
 
                 env
                   .pact_db
@@ -649,7 +649,7 @@ fn select_implementation() -> NativeFunction {
                 // Check if filter function is applicable
                 match filter_fn.can_apply() {
                   Some(filter) => {
-                    let domain = Domain::UserTable(name);
+                    let domain = Domain::User(TableName::new(name));
 
                     // Get all rows for filtering
                     env.pact_db.select(domain, None).bind(move |rows| {
@@ -755,7 +755,7 @@ fn select_with_fields_implementation() -> NativeFunction {
                 // Check if filter function is applicable
                 match filter_fn.can_apply() {
                   Some(filter) => {
-                    let domain = Domain::UserTable(name);
+                    let domain = Domain::User(TableName::new(name));
 
                     // Get all rows for filtering
                     env.pact_db.select(domain, None).bind(move |rows| {
@@ -837,7 +837,7 @@ fn with_default_read_implementation() -> NativeFunction {
             // Guard table read
             match guard_table(&env, &name, GuardTableType::Read) {
               Ok(_) => {
-                let domain = Domain::UserTable(name.clone());
+                let domain = Domain::User(TableName::new(name.clone()));
                 let row_key = RowKey(key.clone());
 
                 env.pact_db.read(domain, row_key).bind(move |result| {
@@ -926,7 +926,7 @@ fn with_read_implementation() -> NativeFunction {
             // Guard table read
             match guard_table(&env, &name, GuardTableType::Read) {
               Ok(_) => {
-                let domain = Domain::UserTable(name.clone());
+                let domain = Domain::User(TableName::new(name.clone()));
                 let row_key = RowKey(key.clone());
 
                 env.pact_db.read(domain, row_key).bind(move |result| {
@@ -1012,7 +1012,7 @@ fn fold_db_implementation() -> NativeFunction {
                 // Check if fold function is applicable
                 match fold_fn.can_apply() {
                   Some(folder) => {
-                    let domain = Domain::UserTable(name);
+                    let domain = Domain::User(TableName::new(name));
 
                     // Get all rows for folding
                     env.pact_db.select(domain, None).bind(move |rows| {
@@ -1102,7 +1102,7 @@ fn describe_keyset_implementation() -> NativeFunction {
               CEKValue::VPactValue(PactValue::String(keyset_name)) => {
                 // Parse keyset name (matches Haskell parseAnyKeysetName)
                 // For now, accept any valid string as keyset name
-                let domain = Domain::KeysetTable;
+                let domain = Domain::KeySets;
                 let row_key = RowKey(keyset_name.clone());
 
                 // Read keyset from database
@@ -1172,7 +1172,7 @@ fn describe_module_implementation() -> NativeFunction {
             match module_name_arg {
               CEKValue::VPactValue(PactValue::String(module_name)) => {
                 // Read module from database
-                let domain = Domain::ModuleTable;
+                let domain = Domain::Modules;
                 let row_key = RowKey(module_name.clone());
 
                 env.pact_db.read(domain, row_key).bind(move |result| {
@@ -1347,7 +1347,7 @@ fn define_keyset_implementation() -> NativeFunction {
             };
 
             // Check if keyset already exists
-            let domain = Domain::KeysetTable;
+            let domain = Domain::KeySets;
             let row_key = RowKey(keyset_name.clone());
 
             env.pact_db.read(domain.clone(), row_key.clone()).bind(move |existing| {
@@ -1481,7 +1481,7 @@ fn read_with_fields_implementation() -> NativeFunction {
               Ok(_) => {
                 // If field list is empty, delegate to regular read
                 if field_list.is_empty() {
-                  let domain = Domain::UserTable(name.clone());
+                  let domain = Domain::User(TableName::new(name.clone()));
                   let row_key = RowKey(key.clone());
 
                   env.pact_db.read(domain, row_key).bind(move |result| {
@@ -1507,7 +1507,7 @@ fn read_with_fields_implementation() -> NativeFunction {
                   })
                 } else {
                   // Filter to specific fields
-                  let domain = Domain::UserTable(name.clone());
+                  let domain = Domain::User(TableName::new(name.clone()));
                   let row_key = RowKey(key.clone());
 
                   // Convert field list to field names

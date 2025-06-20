@@ -18,6 +18,7 @@ pact-gas = { path = "../pact-gas" }
 pact-names = { path = "../pact-names" }
 pact-shared-types = { path = "../pact-shared-types" }
 pact-db = { path = "../pact-db" }
+pact-schema = { path = "../pact-schema" }
 
 # External dependencies
 im = { workspace = true }

@@ -46,6 +46,14 @@ impl<T> EvalM<T> {
         EvalM::new(move |_env, state| Ok((value, state)))
     }
 
+    /// Alias for pure_value - commonly used in Haskell-style code
+    pub fn pure(value: T) -> Self
+    where
+        T: Send + 'static,
+    {
+        Self::pure_value(value)
+    }
+
     /// Throw an error
     pub fn throw_error(error: PactErrorI) -> Self
     where
@@ -78,6 +86,29 @@ impl<T> EvalM<T> {
     /// Ask for environment
     pub fn ask_env() -> EvalM<EvalMEnv> {
         EvalM::new(|env, state| Ok((env, state)))
+    }
+
+    /// Lift an IO operation that may fail into EvalM
+    /// This method converts Result<T, E> into EvalM<T> by converting errors to PactError
+    pub fn try_from_io<E, F>(io_op: F) -> Self
+    where
+        T: Send + 'static,
+        E: std::fmt::Display + Send + 'static,
+        F: FnOnce() -> Result<T, E> + Send + 'static,
+    {
+        EvalM::new(move |_env, state| {
+            match io_op() {
+                Ok(value) => Ok((value, state)),
+                Err(error) => {
+                    let pact_error = PactError::PEExecutionError(
+                        EvalError::RuntimeError(format!("IO Error: {}", error)),
+                        vec![],
+                        SpanInfo::empty()
+                    );
+                    Err(pact_error)
+                }
+            }
+        })
     }
 
     /// Local environment modification

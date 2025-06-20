@@ -487,17 +487,49 @@ impl CEKEnv {
     }
 }
 
-/// Domain for database operations (matches Haskell Domain)
+/// Domain for database operations (matches Haskell Domain and pact-db)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Domain {
     /// User tables
-    UserTable(String),
+    User(TableName),
     /// System tables (keyset registry, modules, etc.)
-    KeysetTable,
-    ModuleTable,
-    NamespaceTable,
+    KeySets,
+    Modules,
+    Namespaces,
     /// DefPact tables
-    DefPactTable,
+    Pacts,
+}
+
+/// Table name wrapper
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TableName {
+    pub name: String,
+}
+
+impl TableName {
+    pub fn new(name: String) -> Self {
+        TableName { name }
+    }
+}
+
+/// Transaction ID
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TxId(pub u64);
+
+/// Transaction log entry
+#[derive(Debug, Clone)]
+pub struct TxLog {
+    pub tx_id: TxId,
+    pub data: String, // Simplified for now
+}
+
+/// Execution mode for database operations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Local execution (no transaction)
+    Local,
+    /// Transactional execution
+    Transactional,
 }
 
 /// Row key for database operations
@@ -558,14 +590,26 @@ pub trait PactDb: std::fmt::Debug + Send + Sync {
     /// Create a new table with gas charging
     fn create_table(&self, table_name: String, schema: TableSchema) -> super::monad::EvalM<()>;
 
-    /// Begin transaction
-    fn begin_tx(&self) -> super::monad::EvalM<()>;
+    /// Begin transaction with execution mode
+    fn begin_tx(&self, mode: ExecutionMode) -> super::monad::EvalM<Option<TxId>>;
 
     /// Commit transaction with gas charging
     fn commit_tx(&self) -> super::monad::EvalM<()>;
 
     /// Rollback transaction
     fn rollback_tx(&self) -> super::monad::EvalM<()>;
+
+    /// Describe table schema
+    fn describe_table(&self, table: TableName) -> super::monad::EvalM<Option<pact_schema::Schema>>;
+
+    /// Check if table exists
+    fn table_exists(&self, table: TableName) -> super::monad::EvalM<bool>;
+
+    /// Get transaction log
+    fn tx_log(&self, domain: Domain, tx_id: TxId) -> super::monad::EvalM<Vec<TxLog>>;
+
+    /// Get transaction IDs
+    fn tx_ids(&self, domain: Domain, tx_id: TxId) -> super::monad::EvalM<Vec<TxId>>;
 
     /// Simplified interface for compatibility (delegates to EvalM versions)
     fn read_row(&self, table: &str, key: &str) -> Result<Option<PactValue>, pact_errors::PactErrorI> {

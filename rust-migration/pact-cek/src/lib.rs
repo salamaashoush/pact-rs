@@ -60,6 +60,7 @@ pub use types::{
     Closure, NativeFn, LamClosure, PartialClosure, PartialNativeFn,
     CapTokenClosure, DefPactClosure, DefPactStep, DefPactStepState,
     Domain, RowKey, RowData, TableSchema, ColumnDef, ColumnType, WriteType,
+    TableName, TxId, TxLog, ExecutionMode,
     CapabilityContext, ModuleContext, GovernanceRequirement, ExecutionFlags,
 };
 
@@ -298,8 +299,8 @@ pub mod architecture_validation {
             monad::EvalM::pure_value(())
         }
 
-        fn begin_tx(&self) -> monad::EvalM<()> {
-            monad::EvalM::pure_value(())
+        fn begin_tx(&self, _mode: ExecutionMode) -> monad::EvalM<Option<TxId>> {
+            monad::EvalM::pure_value(None)
         }
 
         fn commit_tx(&self) -> monad::EvalM<()> {
@@ -308,6 +309,22 @@ pub mod architecture_validation {
 
         fn rollback_tx(&self) -> monad::EvalM<()> {
             monad::EvalM::pure_value(())
+        }
+
+        fn describe_table(&self, _table: TableName) -> monad::EvalM<Option<pact_schema::Schema>> {
+            monad::EvalM::pure_value(None)
+        }
+
+        fn table_exists(&self, _table: TableName) -> monad::EvalM<bool> {
+            monad::EvalM::pure_value(false)
+        }
+
+        fn tx_log(&self, _domain: Domain, _tx_id: TxId) -> monad::EvalM<Vec<TxLog>> {
+            monad::EvalM::pure_value(vec![])
+        }
+
+        fn tx_ids(&self, _domain: Domain, _tx_id: TxId) -> monad::EvalM<Vec<TxId>> {
+            monad::EvalM::pure_value(vec![])
         }
     }
 }
