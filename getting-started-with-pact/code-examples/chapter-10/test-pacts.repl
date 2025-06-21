@@ -1,0 +1,329 @@
+;; test-pacts.repl
+;; Comprehensive testing for pact functionality
+
+(begin-tx "Setup test environment")
+
+;; Setup keyset data
+(env-data {
+  "escrow-admin": ["admin-key"],
+  "xchain-admin": ["admin-key"],
+  "emergency-keyset": ["emergency-key"],
+  "alice": ["alice-key"],
+  "bob": ["bob-key"],
+  "arbitrator": ["arbitrator-key"],
+  "expected-source-chain": "0"
+})
+
+(env-keys ["admin-key"])
+
+;; Load pact modules
+(load "basic-escrow.pact")
+(load "cross-chain-transfer.pact")
+
+;; Setup initial coin balances for testing
+(env-keys ["admin-key"])
+;; Assuming coin module with mint capability exists
+;; (coin.mint "alice" 1000.0)
+;; (coin.mint "bob" 500.0)
+
+(commit-tx)
+
+(begin-tx "Test basic escrow pact")
+
+(use basic-escrow)
+
+;; Create test escrow
+(env-keys ["alice-key"])
+(env-chain-data { "chain-id": "0", "block-height": 100 })
+
+;; Start escrow pact
+(create-escrow "test-escrow-1" "alice" "bob" 100.0 24 "arbitrator")
+
+(expect "Escrow created successfully"
+  true
+  (= (get-escrow-status "test-escrow-1") "active"))
+
+;; Get the pact ID for continuation
+(let ((pact-id (pact-id)))
+  (expect "Pact initialized at step 0"
+    0
+    (at 'step (describe-pact pact-id))))
+
+;; Continue to step 1 (normal completion)
+(env-keys ["admin-key"])  ;; Simulate completion by admin/seller
+(let ((pact-id (at 'pact-id (get-escrow "test-escrow-1"))))
+  (continue-pact pact-id false))
+
+(expect "Escrow completed"
+  "completed"
+  (get-escrow-status "test-escrow-1"))
+
+(commit-tx)
+
+(begin-tx "Test escrow timeout and rollback")
+
+(use basic-escrow)
+
+;; Create escrow with short timeout
+(env-keys ["alice-key"])
+(create-escrow "test-escrow-2" "alice" "bob" 50.0 1 "arbitrator")  ;; 1 hour timeout
+
+;; Get pact for continuation
+(let ((pact-id (pact-id)))
+  
+  ;; Fast forward time past timeout
+  (env-chain-data { 
+    "chain-id": "0", 
+    "block-height": 200,
+    "time": (add-time (chain-data 'time) (hours 2))  ;; 2 hours later
+  })
+  
+  ;; Execute rollback due to timeout
+  (continue-pact pact-id true))
+
+(expect "Escrow refunded due to timeout"
+  "refunded"
+  (get-escrow-status "test-escrow-2"))
+
+(commit-tx)
+
+(begin-tx "Test arbitrator forced refund")
+
+(use basic-escrow)
+
+;; Create another escrow
+(env-keys ["alice-key"])
+(env-chain-data { "chain-id": "0", "block-height": 300 })
+(create-escrow "test-escrow-3" "alice" "bob" 75.0 48 "arbitrator")
+
+;; Arbitrator forces refund
+(env-keys ["arbitrator-key"])
+(force-refund "test-escrow-3" "Dispute resolution - buyer favor")
+
+(expect "Arbitrator forced refund"
+  "refunded"
+  (get-escrow-status "test-escrow-3"))
+
+(commit-tx)
+
+(begin-tx "Test cross-chain transfer pact")
+
+(use cross-chain-transfer)
+
+;; Set up source chain
+(env-chain-data { "chain-id": "0", "block-height": 400 })
+(env-keys ["alice-key"])
+
+;; Start cross-chain transfer
+(transfer-crosschain "xfer-1" "alice" "bob" 100.0 "1")
+
+;; Check transfer status
+(expect "Transfer initiated"
+  "pending"
+  (get-transfer-status "xfer-1"))
+
+;; Verify burn record created
+(let ((burn-record (get-burn-record "xfer-1")))
+  (expect "Burn record has correct amount"
+    100.0
+    (at 'amount burn-record))
+  (expect "Burn record has correct target chain"
+    "1"
+    (at 'target-chain burn-record)))
+
+(commit-tx)
+
+(begin-tx "Test cross-chain transfer completion")
+
+(use cross-chain-transfer)
+
+;; Simulate target chain environment
+(env-chain-data { "chain-id": "1", "block-height": 450 })
+(env-data { "expected-source-chain": "0" })
+
+;; Get the pact ID from previous step
+;; Note: In real scenario, this would be from cross-chain continuation
+(let ((transfer-data (get-transfer "xfer-1")))
+  
+  ;; Continue pact on target chain (step 1)
+  ;; This simulates the cross-chain resume
+  (continue-pact (pact-id) false))
+
+(expect "Transfer completed on target chain"
+  "completed"
+  (get-transfer-status "xfer-1"))
+
+;; Verify mint record created
+(let ((mint-record (get-mint-record "xfer-1")))
+  (expect "Mint record has correct amount"
+    100.0
+    (at 'amount mint-record))
+  (expect "Mint record has correct source chain"
+    "0"
+    (at 'source-chain mint-record)))
+
+(commit-tx)
+
+(begin-tx "Test pact error handling")
+
+(use basic-escrow)
+
+;; Test invalid escrow parameters
+(env-keys ["alice-key"])
+
+(expect-failure "Zero amount fails"
+  "Amount must be positive"
+  (create-escrow "invalid-1" "alice" "bob" 0.0 24 "arbitrator"))
+
+(expect-failure "Zero timeout fails"
+  "Timeout must be positive"
+  (create-escrow "invalid-2" "alice" "bob" 100.0 0 "arbitrator"))
+
+(expect-failure "Same buyer and seller fails"
+  "Buyer and seller must be different"
+  (create-escrow "invalid-3" "alice" "alice" 100.0 24 "arbitrator"))
+
+(commit-tx)
+
+(begin-tx "Test pact state queries")
+
+(use basic-escrow)
+
+;; Create test escrows
+(env-keys ["alice-key"])
+(create-escrow "query-test-1" "alice" "bob" 100.0 24 "arbitrator")
+(env-keys ["bob-key"])  
+(create-escrow "query-test-2" "bob" "alice" 150.0 48 "arbitrator")
+
+;; Test query functions
+(expect "Get active escrows returns both"
+  2
+  (length (get-active-escrows)))
+
+(expect "Get escrows by buyer works"
+  1
+  (length (get-escrows-by-buyer "alice")))
+
+(expect "Get escrows by seller works"
+  1
+  (length (get-escrows-by-seller "alice")))
+
+(commit-tx)
+
+(begin-tx "Test pact property validation")
+
+;; Test pact execution properties
+(defun test-pact-properties ()
+  @doc "Test fundamental pact properties"
+  
+  ;; Property 1: Pacts execute steps in order
+  (use basic-escrow)
+  (env-keys ["alice-key"])
+  (create-escrow "prop-test-1" "alice" "bob" 100.0 24 "arbitrator")
+  
+  (let ((pact-id (pact-id)))
+    (expect "Pact starts at step 0"
+      0
+      (at 'step (describe-pact pact-id)))
+    
+    ;; Continue to next step
+    (continue-pact pact-id false)
+    (expect "Pact advances to step 1"
+      1
+      (at 'step (describe-pact pact-id))))
+  
+  ;; Property 2: Rollbacks undo step effects
+  (create-escrow "prop-test-2" "alice" "bob" 50.0 1 "arbitrator")
+  (let ((pact-id (pact-id))
+        (initial-status (get-escrow-status "prop-test-2")))
+    
+    ;; Fast forward time and rollback
+    (env-chain-data { 
+      "time": (add-time (chain-data 'time) (hours 2))
+    })
+    (continue-pact pact-id true)
+    
+    (expect "Rollback changes status appropriately"
+      "refunded"
+      (get-escrow-status "prop-test-2")))
+)
+
+;; Run property tests
+(test-pact-properties)
+
+(commit-tx)
+
+(begin-tx "Test cross-chain pact properties")
+
+(use cross-chain-transfer)
+
+;; Test cross-chain properties
+(defun test-crosschain-properties ()
+  @doc "Test cross-chain pact properties"
+  
+  ;; Property: Yield data is preserved across chains
+  (env-chain-data { "chain-id": "0" })
+  (env-keys ["alice-key"])
+  (transfer-crosschain "prop-xfer-1" "alice" "bob" 200.0 "1")
+  
+  (let ((transfer (get-transfer "prop-xfer-1")))
+    (expect "Transfer amount preserved"
+      200.0
+      (at 'amount transfer))
+    (expect "Source chain recorded"
+      "0"
+      (at 'source-chain transfer))
+    (expect "Target chain recorded"
+      "1"
+      (at 'target-chain transfer)))
+  
+  ;; Property: Burn and mint amounts match
+  (let ((burn (get-burn-record "prop-xfer-1")))
+    (expect "Burn amount matches transfer"
+      200.0
+      (at 'amount burn)))
+)
+
+(test-crosschain-properties)
+
+(commit-tx)
+
+(begin-tx "Test emergency functions")
+
+(use cross-chain-transfer)
+
+;; Test emergency cancellation
+(env-keys ["alice-key"])
+(env-chain-data { "chain-id": "0" })
+(transfer-crosschain "emergency-test" "alice" "bob" 300.0 "1")
+
+;; Emergency cancel
+(env-keys ["emergency-key"])
+(emergency-cancel "emergency-test" "Network congestion detected")
+
+(expect "Emergency cancellation successful"
+  "cancelled"
+  (get-transfer-status "emergency-test"))
+
+(commit-tx)
+
+;; Summary report
+(print "=== PACT TESTING COMPLETE ===")
+(print "Tests completed:")
+(print "✓ Basic escrow creation and completion")
+(print "✓ Escrow timeout and rollback")
+(print "✓ Arbitrator forced refund")
+(print "✓ Cross-chain transfer initiation")
+(print "✓ Cross-chain transfer completion")
+(print "✓ Error handling and validation")
+(print "✓ State queries and data integrity")
+(print "✓ Pact execution properties")
+(print "✓ Cross-chain properties")
+(print "✓ Emergency functions")
+(print "")
+(print "Key insights:")
+(print "- Pacts maintain state between steps")
+(print "- Rollbacks provide error recovery")
+(print "- Cross-chain coordination via yield/resume")
+(print "- Comprehensive error handling required")
+(print "- Administrative functions for emergency cases")

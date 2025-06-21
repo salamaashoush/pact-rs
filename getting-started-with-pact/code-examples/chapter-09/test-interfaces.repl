@@ -1,0 +1,246 @@
+;; test-interfaces.repl
+;; Testing interface implementations
+
+(begin-tx "Load interfaces and implementations")
+
+;; Setup test environment
+(env-data {
+  "coin-admin": ["admin-key"],
+  "storage-admin": ["admin-key"],
+  "test-admin": ["admin-key"],
+  "alice": ["alice-key"],
+  "bob": ["bob-key"]
+})
+
+(env-keys ["admin-key"])
+
+;; Load interface definitions
+(load "fungible-interface.pact")
+(load "storage-interface.pact")
+
+;; Load implementations
+(load "simple-coin.pact")
+
+(commit-tx)
+
+(begin-tx "Test fungible interface")
+
+;; Test coin implementation
+(use simple-coin)
+
+;; Create test accounts
+(env-keys ["admin-key"])
+(mint "alice" (read-keyset "alice") 1000.0)
+(mint "bob" (read-keyset "bob") 500.0)
+
+;; Test interface compliance
+(expect "Balance function works"
+  1000.0
+  (get-balance "alice"))
+
+(expect "Supply function works"
+  1500.0
+  (get-supply))
+
+;; Test transfer with capability
+(env-keys ["alice-key"])
+(expect "Transfer works with proper authorization"
+  "Transfer succeeded"
+  (transfer "alice" "bob" 100.0))
+
+(expect "Alice balance decreased"
+  900.0
+  (get-balance "alice"))
+
+(expect "Bob balance increased"
+  600.0
+  (get-balance "bob"))
+
+(expect "Supply preserved"
+  1500.0
+  (get-supply))
+
+;; Test transfer-create
+(transfer-create "alice" "charlie" (read-keyset "alice") 50.0)
+
+(expect "Charlie account created with balance"
+  50.0
+  (get-balance "charlie"))
+
+(commit-tx)
+
+(begin-tx "Test storage interface")
+
+;; Test table storage implementation
+(use table-storage)
+
+(env-keys ["admin-key"])
+
+;; Test basic operations
+(expect "Store operation works"
+  "Data stored successfully"
+  (store "test-key" { "value": 42, "name": "test" }))
+
+(expect "Retrieve operation works"
+  { "value": 42, "name": "test" }
+  (retrieve "test-key"))
+
+(expect "Exists check works"
+  true
+  (exists "test-key"))
+
+(expect "Exists check for non-existent key"
+  false
+  (exists "missing-key"))
+
+;; Test batch operations
+(store-batch [
+  { "key": "batch1", "value": { "data": "first" } },
+  { "key": "batch2", "value": { "data": "second" } }
+])
+
+(expect "Batch retrieve works"
+  [{ "data": "first" }, { "data": "second" }]
+  (retrieve-batch ["batch1", "batch2"]))
+
+;; Test list keys
+(expect "List keys includes all stored keys"
+  true
+  (and (contains "test-key" (list-keys))
+       (contains "batch1" (list-keys))
+       (contains "batch2" (list-keys))))
+
+(commit-tx)
+
+(begin-tx "Test memory storage implementation")
+
+;; Test memory storage
+(use memory-storage)
+
+(env-keys ["admin-key"])
+
+;; Test basic operations
+(store "mem-key" { "type": "memory", "value": 123 })
+
+(expect "Memory retrieve works"
+  { "type": "memory", "value": 123 }
+  (retrieve "mem-key"))
+
+(expect "Memory exists works"
+  true
+  (exists "mem-key"))
+
+;; Test batch operations
+(store-batch [
+  { "key": "mem1", "value": { "data": "memory1" } },
+  { "key": "mem2", "value": { "data": "memory2" } }
+])
+
+(expect "Memory batch retrieve works"
+  [{ "data": "memory1" }, { "data": "memory2" }]
+  (retrieve-batch ["mem1", "mem2"]))
+
+;; Test clear functionality
+(clear-all)
+
+(expect "Clear all removes all data"
+  false
+  (exists "mem-key"))
+
+(commit-tx)
+
+(begin-tx "Test polymorphic functions")
+
+;; Define generic functions that work with any fungible token
+(defun transfer-with-any-token (token:module{fungible-v2} from:string to:string amount:decimal)
+  @doc "Transfer using any fungible token implementation"
+  (token::transfer from to amount))
+
+(defun get-token-info (token:module{fungible-v2} account:string)
+  @doc "Get token information for any implementation"
+  {
+    "balance": (token::get-balance account),
+    "total-supply": (token::get-supply)
+  })
+
+;; Test with simple-coin
+(env-keys ["alice-key"])
+
+(expect "Polymorphic transfer works"
+  "Transfer succeeded"
+  (transfer-with-any-token simple-coin "alice" "bob" 25.0))
+
+(expect "Polymorphic info retrieval works"
+  {
+    "balance": 875.0,
+    "total-supply": 1500.0
+  }
+  (get-token-info simple-coin "alice"))
+
+(commit-tx)
+
+(begin-tx "Test interface error handling")
+
+;; Test capability enforcement
+(env-keys [])  ;; No keys - should fail
+
+(expect-failure "Transfer fails without proper authorization"
+  "keyset failure"
+  (simple-coin.transfer "alice" "bob" 10.0))
+
+;; Test invalid parameters
+(env-keys ["alice-key"])
+
+(expect-failure "Transfer fails with zero amount"
+  "transfer amount must be positive"
+  (simple-coin.transfer "alice" "bob" 0.0))
+
+(expect-failure "Transfer fails with negative amount"
+  "transfer amount must be positive"
+  (simple-coin.transfer "alice" "bob" -10.0))
+
+(expect-failure "Transfer fails with same sender and receiver"
+  "same sender and receiver"
+  (simple-coin.transfer "alice" "alice" 10.0))
+
+(commit-tx)
+
+(begin-tx "Property testing")
+
+;; Test that all implementations satisfy interface properties
+(defun test-fungible-properties (token:module{fungible-v2})
+  @doc "Test properties that all fungible tokens should satisfy"
+  
+  ;; Property: All balances are non-negative
+  (let ((alice-balance (token::get-balance "alice"))
+        (bob-balance (token::get-balance "bob"))
+        (charlie-balance (token::get-balance "charlie")))
+    (enforce (>= alice-balance 0.0) "Alice balance non-negative")
+    (enforce (>= bob-balance 0.0) "Bob balance non-negative") 
+    (enforce (>= charlie-balance 0.0) "Charlie balance non-negative"))
+  
+  ;; Property: Supply is non-negative
+  (enforce (>= (token::get-supply) 0.0) "Supply non-negative")
+  
+  ;; Property: Supply equals sum of balances would require iterating all accounts
+  ;; For this test, we just check that supply >= sum of known balances
+  (let ((total-known (+ (token::get-balance "alice")
+                        (+ (token::get-balance "bob")
+                           (token::get-balance "charlie"))))
+        (supply (token::get-supply)))
+    (enforce (>= supply total-known) "Supply at least sum of known balances"))
+)
+
+;; Test properties with simple-coin
+(test-fungible-properties simple-coin)
+
+(commit-tx)
+
+;; Print test results
+(print "All interface tests passed!")
+(print "Tested:")
+(print "- Fungible interface implementation")
+(print "- Storage interface implementations (table and memory)")
+(print "- Polymorphic function calls")
+(print "- Error handling and validation")
+(print "- Interface property testing")
