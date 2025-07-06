@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PactZombies - Progress Tracker</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #ff6b6b;
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+        }
+        .progress-overview {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .progress-bar {
+            background: #3a3a3a;
+            height: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, #ff6b6b, #ff8e8e);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        .lesson-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .lesson-card {
+            background: #2a2a2a;
+            border: 2px solid #3a3a3a;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .lesson-card.completed {
+            border-color: #4caf50;
+        }
+        .lesson-card.current {
+            border-color: #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.3);
+        }
+        .lesson-card.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .lesson-number {
+            position: absolute;
+            top: -15px;
+            left: 20px;
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+        .lesson-title {
+            font-size: 1.3em;
+            margin: 10px 0;
+            color: #ffffff;
+        }
+        .lesson-topics {
+            margin: 15px 0;
+        }
+        .topic-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+        .checkbox {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            border: 2px solid #666;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .checkbox.checked {
+            background: #4caf50;
+            border-color: #4caf50;
+        }
+        .checkbox.checked::after {
+            content: '✓';
+            color: white;
+            display: block;
+            text-align: center;
+            line-height: 14px;
+        }
+        .achievement-section {
+            margin-top: 40px;
+        }
+        .achievements {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .achievement {
+            background: #3a3a3a;
+            padding: 15px 25px;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+        }
+        .achievement.earned {
+            background: linear-gradient(135deg, #4caf50, #45a049);
+        }
+        .achievement-icon {
+            font-size: 1.5em;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .stat-card {
+            background: #3a3a3a;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            color: #ff6b6b;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #999;
+            margin-top: 5px;
+        }
+        .zombie-icon {
+            font-size: 1.2em;
+            margin-right: 5px;
+        }
+        .start-button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 15px;
+            width: 100%;
+            transition: background 0.3s ease;
+        }
+        .start-button:hover {
+            background: #ff5252;
+        }
+        .start-button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><span class="zombie-icon">🧟</span> PactZombies Progress Tracker</h1>
+        
+        <div class="progress-overview">
+            <h2>Overall Progress</h2>
+            <div class="progress-bar">
+                <div class="progress-fill" id="overall-progress">0%</div>
+            </div>
+            <p>Complete all lessons to become a Pact Zombie Master!</p>
+        </div>
+
+        <div class="lesson-grid" id="lessons-container">
+            <!-- Lessons will be inserted here -->
+        </div>
+
+        <div class="achievement-section">
+            <h2>Achievements</h2>
+            <div class="achievements" id="achievements-container">
+                <!-- Achievements will be inserted here -->
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="lessons-completed">0</div>
+                <div class="stat-label">Lessons Completed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="topics-mastered">0</div>
+                <div class="stat-label">Topics Mastered</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="zombies-created">0</div>
+                <div class="stat-label">Zombies Created</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="time-spent">0h</div>
+                <div class="stat-label">Time Invested</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Course data
+        const lessons = [
+            {
+                number: 1,
+                title: "Making Your First Zombie",
+                topics: [
+                    "Basic Pact syntax",
+                    "Creating modules",
+                    "Defining schemas",
+                    "Writing functions",
+                    "Testing with REPL"
+                ],
+                completed: false
+            },
+            {
+                number: 2,
+                title: "Zombies Attack Their Victims",
+                topics: [
+                    "Function parameters",
+                    "Battle mechanics",
+                    "Ownership checks",
+                    "Level system",
+                    "Cooldowns"
+                ],
+                completed: false
+            },
+            {
+                number: 3,
+                title: "Advanced Zombie Features",
+                topics: [
+                    "Capabilities",
+                    "Security patterns",
+                    "Transfers",
+                    "Marketplace",
+                    "Admin controls"
+                ],
+                completed: false
+            },
+            {
+                number: 4,
+                title: "Zombie Economics",
+                topics: [
+                    "Fungible tokens",
+                    "Token transfers",
+                    "Staking system",
+                    "Rewards",
+                    "DeFi basics"
+                ],
+                completed: false
+            },
+            {
+                number: 5,
+                title: "Multi-Step Zombie Quests",
+                topics: [
+                    "Understanding pacts",
+                    "Yield and resume",
+                    "Multi-party flows",
+                    "Quest chains",
+                    "Time mechanics"
+                ],
+                completed: false
+            },
+            {
+                number: 6,
+                title: "Zombie Apocalypse",
+                topics: [
+                    "Cross-chain transfers",
+                    "SPV proofs",
+                    "Gas optimization",
+                    "Production deployment",
+                    "Complete DApp"
+                ],
+                completed: false
+            }
+        ];
+
+        const achievements = [
+            { id: "first-zombie", name: "First Bite", icon: "🧟", requirement: "Create your first zombie" },
+            { id: "battle-master", name: "Battle Master", icon: "⚔️", requirement: "Win 10 battles" },
+            { id: "economist", name: "Zombie Economist", icon: "💰", requirement: "Complete token lesson" },
+            { id: "quest-hero", name: "Quest Hero", icon: "🗺️", requirement: "Complete a quest" },
+            { id: "chain-hopper", name: "Chain Hopper", icon: "🔗", requirement: "Transfer cross-chain" },
+            { id: "graduate", name: "Pact Master", icon: "🎓", requirement: "Complete all lessons" }
+        ];
+
+        // Load progress from localStorage
+        function loadProgress() {
+            const saved = localStorage.getItem('pactZombiesProgress');
+            if (saved) {
+                const progress = JSON.parse(saved);
+                lessons.forEach((lesson, index) => {
+                    if (progress.lessons && progress.lessons[index]) {
+                        lesson.completed = progress.lessons[index].completed;
+                        lesson.topics.forEach((topic, topicIndex) => {
+                            const checkbox = document.querySelector(`#topic-${index}-${topicIndex}`);
+                            if (checkbox && progress.lessons[index].topics && progress.lessons[index].topics[topicIndex]) {
+                                checkbox.classList.add('checked');
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        // Save progress to localStorage
+        function saveProgress() {
+            const progress = {
+                lessons: lessons.map((lesson, index) => ({
+                    completed: lesson.completed,
+                    topics: Array.from(document.querySelectorAll(`#lesson-${index} .checkbox`))
+                        .map(cb => cb.classList.contains('checked'))
+                }))
+            };
+            localStorage.setItem('pactZombiesProgress', JSON.stringify(progress));
+        }
+
+        // Render lessons
+        function renderLessons() {
+            const container = document.getElementById('lessons-container');
+            container.innerHTML = '';
+            
+            lessons.forEach((lesson, index) => {
+                const isLocked = index > 0 && !lessons[index - 1].completed;
+                const isCurrent = index === 0 || (index > 0 && lessons[index - 1].completed && !lesson.completed);
+                
+                const lessonCard = document.createElement('div');
+                lessonCard.className = `lesson-card ${lesson.completed ? 'completed' : ''} ${isCurrent ? 'current' : ''} ${isLocked ? 'locked' : ''}`;
+                lessonCard.id = `lesson-${index}`;
+                
+                lessonCard.innerHTML = `
+                    <div class="lesson-number">Lesson ${lesson.number}</div>
+                    <h3 class="lesson-title">${lesson.title}</h3>
+                    <div class="lesson-topics">
+                        ${lesson.topics.map((topic, topicIndex) => `
+                            <div class="topic-item">
+                                <div class="checkbox" id="topic-${index}-${topicIndex}" onclick="toggleTopic(${index}, ${topicIndex})"></div>
+                                <span>${topic}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="start-button" onclick="startLesson(${lesson.number})" ${isLocked ? 'disabled' : ''}>
+                        ${lesson.completed ? 'Review Lesson' : 'Start Lesson'}
+                    </button>
+                `;
+                
+                container.appendChild(lessonCard);
+            });
+        }
+
+        // Toggle topic completion
+        function toggleTopic(lessonIndex, topicIndex) {
+            const checkbox = document.getElementById(`topic-${lessonIndex}-${topicIndex}`);
+            checkbox.classList.toggle('checked');
+            
+            // Check if all topics in lesson are completed
+            const lessonElement = document.getElementById(`lesson-${lessonIndex}`);
+            const allCheckboxes = lessonElement.querySelectorAll('.checkbox');
+            const checkedCount = lessonElement.querySelectorAll('.checkbox.checked').length;
+            
+            if (checkedCount === allCheckboxes.length) {
+                lessons[lessonIndex].completed = true;
+                checkAchievements();
+            }
+            
+            saveProgress();
+            updateStats();
+            renderLessons();
+        }
+
+        // Update statistics
+        function updateStats() {
+            const completedLessons = lessons.filter(l => l.completed).length;
+            const totalTopics = lessons.reduce((sum, l) => sum + l.topics.length, 0);
+            const completedTopics = document.querySelectorAll('.checkbox.checked').length;
+            const progressPercent = Math.round((completedTopics / totalTopics) * 100);
+            
+            document.getElementById('lessons-completed').textContent = completedLessons;
+            document.getElementById('topics-mastered').textContent = completedTopics;
+            document.getElementById('overall-progress').style.width = progressPercent + '%';
+            document.getElementById('overall-progress').textContent = progressPercent + '%';
+            
+            // Simulated stats
+            document.getElementById('zombies-created').textContent = completedLessons * 3;
+            document.getElementById('time-spent').textContent = completedLessons * 2 + 'h';
+        }
+
+        // Check and award achievements
+        function checkAchievements() {
+            const completedLessons = lessons.filter(l => l.completed).length;
+            const earnedAchievements = [];
+            
+            if (completedLessons >= 1) earnedAchievements.push('first-zombie');
+            if (completedLessons >= 2) earnedAchievements.push('battle-master');
+            if (completedLessons >= 4) earnedAchievements.push('economist');
+            if (completedLessons >= 5) earnedAchievements.push('quest-hero');
+            if (completedLessons >= 6) {
+                earnedAchievements.push('chain-hopper');
+                earnedAchievements.push('graduate');
+            }
+            
+            renderAchievements(earnedAchievements);
+        }
+
+        // Render achievements
+        function renderAchievements(earned) {
+            const container = document.getElementById('achievements-container');
+            container.innerHTML = '';
+            
+            achievements.forEach(achievement => {
+                const div = document.createElement('div');
+                div.className = `achievement ${earned.includes(achievement.id) ? 'earned' : ''}`;
+                div.innerHTML = `
+                    <span class="achievement-icon">${achievement.icon}</span>
+                    <div>
+                        <strong>${achievement.name}</strong><br>
+                        <small>${achievement.requirement}</small>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Start a lesson
+        function startLesson(lessonNumber) {
+            window.location.href = `../lessons/lesson-0${lessonNumber}-*/README.md`;
+        }
+
+        // Initialize
+        renderLessons();
+        loadProgress();
+        updateStats();
+        checkAchievements();
+    </script>
+</body>
+</html>

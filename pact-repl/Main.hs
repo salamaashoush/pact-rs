@@ -4,6 +4,7 @@ module Main where
 import Pact.Core.Repl
 import Pact.Core.Builtin
 import Pact.Core.LanguageServer
+import Pact.Core.LanguageServer.Formatting
 
 import qualified Options.Applicative as O
 import qualified Data.ByteString as BS
@@ -54,6 +55,16 @@ data ReplOpts
   -- Crypto
   | OGenKey
   | OCheckNativeShadowing FilePath
+  -- Formatting
+  | OFormat
+      { _oFormatFile :: FilePath
+      , _oFormatInPlace :: Bool
+      , _oFormatIndentSize :: Int
+      , _oFormatMaxLineWidth :: Int
+      , _oFormatSpaceBetweenDefinitions :: Bool
+      , _oFormatClosingParensOnNewLine :: Bool
+      , _oFormatSpaceInsideModules :: Bool
+      }
   deriving (Eq, Show)
 
 replOpts :: O.Parser (Maybe ReplOpts)
@@ -67,6 +78,7 @@ replOpts = O.optional $
   <|> loadFlag
   <|> OServer <$> O.strOption (O.metavar "CONFIG" <> O.short 's' <> O.long "server" <> O.help "Run Pact-Server")
   <|> checkNativeShadowingFlag
+  <|> formatFlag
 
 -- Todo: trace output and coverage?
 loadFlag :: O.Parser ReplOpts
@@ -87,6 +99,20 @@ checkNativeShadowingFlag =
   OCheckNativeShadowing
     <$> O.strOption(O.metavar "FILE" <> O.long "check-shadowing" <> O.help "Run a native shadowing check over a particular .pact or .repl file")
 
+<<<<<<< Updated upstream
+=======
+formatFlag :: O.Parser ReplOpts
+formatFlag = O.flag' () (O.short 'f' <> O.long "format" <> O.help "Format a Pact file") *> 
+  (OFormat
+    <$> O.argument O.str (O.metavar "FILE" <> O.help "Pact file to format")
+    <*> O.flag False True (O.short 'i' <> O.long "in-place" <> O.help "Format file in place")
+    <*> O.option O.auto (O.long "indent-size" <> O.value 2 <> O.help "Number of spaces for indentation (default: 2)")
+    <*> O.option O.auto (O.long "max-line-width" <> O.value 80 <> O.help "Maximum line width (default: 80)")
+    <*> O.flag True False (O.long "no-space-between-definitions" <> O.help "Don't add blank lines between definitions")
+    <*> O.flag True False (O.long "no-closing-parens-newline" <> O.help "Don't place closing parens on new lines")
+    <*> O.flag True False (O.long "no-space-inside-modules" <> O.help "Don't add spacing inside modules"))
+ 
+>>>>>>> Stashed changes
 argParser :: O.ParserInfo (Maybe ReplOpts)
 argParser = O.info (O.helper <*> replOpts)
             (O.fullDesc <> O.header "The Pact Smart Contract Language Interpreter")
@@ -136,6 +162,18 @@ main = O.execParser argParser >>= \case
       Left perr -> putStrLn $ Y.prettyPrintParseException perr
       Right config -> runServer config noSPVSupport
     OCheckNativeShadowing fp -> checkParsedShadows fp
+    OFormat file inPlace indentSize maxLineWidth spaceBetween closingParens spaceInside -> do
+      let config = PactFormattingConfig
+            { pactIndentSize = indentSize
+            , pactMaxLineWidth = maxLineWidth
+            , pactSpaceBetweenDefinitions = spaceBetween
+            , pactClosingParensOnNewLine = closingParens
+            , pactSpaceInsideModules = spaceInside
+            , pactAlignBindings = True  -- default value
+            , pactAlignLetBindings = True  -- default value
+            , pactBreakLongFunctionCalls = True  -- default value
+            }
+      formatPactFile config file inPlace
   where
     runScript f dolog cov = execScript dolog cov f >>= \case
       (Left pe, state) -> do
@@ -156,6 +194,20 @@ genKeys = do
   kp <- genKeyPair
   putStrLn $ "public: " ++ T.unpack (toB16Text $ getPublic kp)
   putStrLn $ "secret: " ++ T.unpack (toB16Text $ getPrivate kp)
+
+formatPactFile :: PactFormattingConfig -> FilePath -> Bool -> IO ()
+formatPactFile config file inPlace = do
+  content <- T.readFile file
+  case formatPactDocumentWithConfig config content of
+    Nothing -> do
+      hPutStrLn stderr $ "Error: Failed to format " ++ file ++ " (parsing failed)"
+      exitFailure
+    Just formatted -> 
+      if inPlace 
+      then do
+        T.writeFile file formatted
+        putStrLn $ "Formatted " ++ file ++ " in place"
+      else T.putStr formatted
 
 -- | Run heuristics to find a repl script. First is the file name with ".repl" extension;
 -- if not, it will see if there is a single ".repl" file in the directory, and if so

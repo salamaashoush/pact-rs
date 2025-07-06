@@ -1,0 +1,166 @@
+; PactZombies Lesson 2 - Testing Complete Features
+; ================================================
+
+; Setup
+(begin-tx)
+(load "zombie-feeding-complete.pact")
+(create-table zombies-table)
+(commit-tx)
+
+; Test 1: Create zombies with types and special moves
+(begin-tx)
+(use zombies)
+
+(print "Creating zombies with enhanced features:")
+(print "")
+
+; Create multiple zombies to see variety
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:00:00Z"), "block-height": 1})
+(print (create-zombie "Alpha"))
+
+(env-chain-data {"block-time": (time "2024-01-01T00:00:01Z"), "block-height": 2})
+(print (create-zombie "Beta"))
+
+(env-data {"sender": "bob"})
+(env-chain-data {"block-time": (time "2024-01-01T00:00:02Z"), "block-height": 3})
+(print (create-zombie "Gamma"))
+
+(env-chain-data {"block-time": (time "2024-01-01T00:00:03Z"), "block-height": 4})
+(print (create-zombie "Delta"))
+
+(print "")
+(commit-tx)
+
+; Test 2: Feed with different species
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:11:00Z"), "block-height": 100})
+
+(print "Testing feed mechanics with different species:")
+(let ((alice-zombies (get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      ; Feed on human
+      (print (feed-and-multiply zombie-id "Human Victim" "human"))
+      
+      ; Wait for cooldown
+      (env-chain-data {"block-time": (time "2024-01-01T00:22:00Z"), "block-height": 200})
+      
+      ; Feed on kitty (CryptoKitties reference!)
+      (print (feed-and-multiply zombie-id "Fluffy" "kitty"))
+      (print ""))
+    (print "No zombies found")))
+(commit-tx)
+
+; Test 3: Type advantages in battle
+(begin-tx)
+(use zombies)
+(env-chain-data {"block-time": (time "2024-01-01T01:00:00Z"), "block-height": 1000})
+
+(print "Testing type advantages in battle:")
+(print "")
+
+; Get zombies for battle
+(env-data {"sender": "alice"})
+(let ((alice-zombies (get-my-zombies)))
+  (env-data {"sender": "bob"})
+  (let ((bob-zombies (get-my-zombies)))
+    (if (and (>= (length alice-zombies) 2) (>= (length bob-zombies) 2))
+      (let ((alice-id-1 (format "zombie_{}" [(at "dna" (at 0 alice-zombies))]))
+            (alice-id-2 (format "zombie_{}" [(at "dna" (at 1 alice-zombies))]))
+            (bob-id-1 (format "zombie_{}" [(at "dna" (at 0 bob-zombies))]))
+            (bob-id-2 (format "zombie_{}" [(at "dna" (at 1 bob-zombies))])))
+        
+        ; First battle
+        (env-data {"sender": "alice"})
+        (print (battle alice-id-1 bob-id-1))
+        
+        ; Wait for cooldown
+        (env-chain-data {"block-time": (time "2024-01-01T01:06:00Z"), "block-height": 1100})
+        
+        ; Second battle
+        (print (battle alice-id-2 bob-id-2))
+        (print ""))
+      (print "Not enough zombies for multiple battles"))))
+(commit-tx)
+
+; Test 4: Special moves
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+
+(print "Testing special moves:")
+(let ((my-zombies (get-my-zombies)))
+  (if (>= (length my-zombies) 2)
+    (let ((zombie-1-id (format "zombie_{}" [(at "dna" (at 0 my-zombies))]))
+          (zombie-2-id (format "zombie_{}" [(at "dna" (at 1 my-zombies))])))
+      (print (use-special-move zombie-1-id zombie-2-id))
+      (print ""))
+    (print "Need at least 2 zombies")))
+(commit-tx)
+
+; Test 5: Get detailed zombie information
+(begin-tx)
+(use zombies)
+
+(print "Detailed zombie information:")
+(print "")
+
+(env-data {"sender": "alice"})
+(print "Alice's zombie army:")
+(map (lambda (z) 
+  (let ((zombie-id (format "zombie_{}" [(at "dna" z)])))
+    (print (get-zombie-details zombie-id))
+    (print "")))
+  (take 3 (get-my-zombies)))
+
+(env-data {"sender": "bob"})
+(print "Bob's zombie army:")
+(map (lambda (z) 
+  (let ((zombie-id (format "zombie_{}" [(at "dna" z)])))
+    (print (get-zombie-details zombie-id))
+    (print "")))
+  (take 3 (get-my-zombies)))
+(commit-tx)
+
+; Test 6: Leaderboard
+(begin-tx)
+(use zombies)
+
+(print "Top 5 Zombies Leaderboard:")
+(print "==========================")
+(let ((leaders (get-leaderboard 5)))
+  (map (lambda (idx)
+    (let ((z (at idx leaders)))
+      (print (format "{}. {} ({}) - Level {} - {} wins - Owner: {}"
+        [(+ idx 1) (at "name" z) (at "type" z) (at "level" z) 
+         (at "wins" z) (at "owner" z)]))))
+    (enumerate 0 (- (length leaders) 1))))
+(commit-tx)
+
+; Test 7: Critical hit demonstration
+(begin-tx)
+(use zombies)
+(env-chain-data {"block-time": (time "2024-01-01T02:00:00Z"), "block-height": 2000})
+
+(print "")
+(print "Testing critical hits (DNA ending in 0):")
+
+; Create a zombie with DNA likely to get critical hits
+(env-data {"sender": "charlie"})
+(print (create-zombie "Lucky Strike"))
+
+; You would need to battle multiple times to see critical hits
+(print "Critical hits occur when zombie DNA ends in 0 (10% chance)")
+(commit-tx)
+
+(print "")
+(print "🎉 Advanced features demonstrated!")
+(print "✅ Zombie types with advantages")
+(print "✅ XP and leveling system")
+(print "✅ Special moves")
+(print "✅ Critical hits")
+(print "✅ Different species feeding")
+(print "✅ Comprehensive stats and leaderboard")

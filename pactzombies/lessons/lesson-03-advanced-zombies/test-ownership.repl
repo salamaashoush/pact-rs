@@ -1,0 +1,163 @@
+; PactZombies Lesson 3 - Testing Ownership and Security
+; =====================================================
+
+; Setup
+(env-data {"zombies-admin": {"keys": ["admin-key"]}})
+(env-keys ["admin-key"])
+
+(begin-tx)
+(load "zombie-ownership.pact")
+(create-table zombies-table)
+(create-table market-table)
+(create-table game-state-table)
+(commit-tx)
+
+; Initialize game
+(begin-tx)
+(use zombies)
+(initialize)
+(commit-tx)
+
+; Test 1: Create zombies with different owners
+(begin-tx)
+(use zombies)
+
+(env-data {"sender": "alice"})
+(print "Alice creates zombies:")
+(print (create-zombie "Alice Alpha"))
+(print (create-zombie "Alice Beta"))
+
+(env-data {"sender": "bob"})
+(print "")
+(print "Bob creates zombies:")
+(print (create-zombie "Bob Gamma"))
+(print (create-zombie "Bob Delta"))
+(print "")
+(commit-tx)
+
+; Test 2: Transfer zombie ownership
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+
+(print "Testing zombie transfer:")
+(let ((alice-zombies (get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print (format "Transferring zombie {} to bob" [zombie-id]))
+      (print (transfer-zombie zombie-id "bob"))
+      (print ""))
+    (print "No zombies to transfer")))
+(commit-tx)
+
+; Test 3: List zombie for sale
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+
+(print "Alice lists a zombie for sale:")
+(let ((alice-zombies (get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print (list-zombie-for-sale zombie-id 50.0))
+      (print ""))
+    (print "No zombies to list")))
+(commit-tx)
+
+; Test 4: View market listings
+(begin-tx)
+(use zombies)
+
+(print "Current market listings:")
+(let ((listings (get-zombies-for-sale)))
+  (map (lambda (listing)
+    (print (format "- {} (Level {}) - {} KDA" 
+      [(at "name" listing) (at "level" listing) (at "price" listing)])))
+    listings))
+(print "")
+(commit-tx)
+
+; Test 5: Buy zombie from market
+(begin-tx)
+(use zombies)
+(env-data {"sender": "charlie"})
+
+(print "Charlie tries to buy a zombie:")
+(let ((listings (get-zombies-for-sale)))
+  (if (> (length listings) 0)
+    (let ((zombie-id (at "id" (at 0 listings))))
+      (print (buy-zombie zombie-id))
+      (print ""))
+    (print "No zombies for sale")))
+(commit-tx)
+
+; Test 6: Ownership verification after purchase
+(begin-tx)
+(use zombies)
+
+(print "Zombie ownership after transactions:")
+(env-data {"sender": "alice"})
+(print (format "Alice owns {} zombies" [(get-zombie-count "alice")]))
+
+(env-data {"sender": "bob"})
+(print (format "Bob owns {} zombies" [(get-zombie-count "bob")]))
+
+(env-data {"sender": "charlie"})
+(print (format "Charlie owns {} zombies" [(get-zombie-count "charlie")]))
+(print "")
+(commit-tx)
+
+; Test 7: Admin pause/unpause game
+(begin-tx)
+(use zombies)
+(env-data {"zombies-admin": {"keys": ["admin-key"]}})
+(env-keys ["admin-key"])
+
+(print "Admin pausing game:")
+(print (pause-game true))
+
+; Try to create zombie while paused (should fail)
+(env-data {"sender": "alice"})
+(expect-failure "Cannot create zombie while paused"
+  "Game is currently paused"
+  (create-zombie "Paused Zombie"))
+
+; Unpause
+(env-data {"zombies-admin": {"keys": ["admin-key"]}})
+(env-keys ["admin-key"])
+(print (pause-game false))
+(print "")
+(commit-tx)
+
+; Test 8: Game statistics
+(begin-tx)
+(use zombies)
+
+(print "Game Statistics:")
+(let ((stats (get-game-stats)))
+  (print (format "Total Zombies: {}" [(at "total-zombies" stats)]))
+  (print (format "Total Battles: {}" [(at "total-battles" stats)]))
+  (print (format "Game Paused: {}" [(at "paused" stats)])))
+(print "")
+(commit-tx)
+
+; Test 9: Detailed zombie information
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+
+(print "Detailed zombie information:")
+(let ((alice-zombies (get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print (get-zombie-details zombie-id)))
+    (print "No zombies found")))
+(commit-tx)
+
+(print "")
+(print "🎉 Lesson 3 complete! You've mastered:")
+(print "✅ Capability-based security")
+(print "✅ Ownership transfers")
+(print "✅ Marketplace mechanics")
+(print "✅ Admin controls")
+(print "✅ View functions")

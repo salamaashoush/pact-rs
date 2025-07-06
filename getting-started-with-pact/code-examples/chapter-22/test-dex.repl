@@ -1,0 +1,497 @@
+;; test-dex.repl
+;; Comprehensive DEX testing
+
+;; Load dependencies and coin interface
+(env-data { "upgrade": false })
+(load "../../../pact-tests/pact-tests/coin-v5/fungible-v2.pact")
+(load "../../../pact-tests/pact-tests/coin-v5/coin-v5.pact")
+
+;; Define a simple test token
+(begin-tx "Define test token")
+(module test-token GOVERNANCE
+  (implements fungible-v2)
+
+  (defcap GOVERNANCE () (enforce-keyset 'admin))
+
+  (defschema account
+    balance:decimal
+    guard:guard)
+
+  (deftable accounts:{account})
+
+  (defun create-account:string (account:string guard:guard)
+    (insert accounts account { "balance": 0.0, "guard": guard }))
+
+  (defun get-balance:decimal (account:string)
+    (at 'balance (read accounts account)))
+
+  (defun details:object{fungible-v2.account-details} (account:string)
+    (with-read accounts account { "balance" := bal, "guard" := g }
+      { "account": account, "balance": bal, "guard": g }))
+
+  (defun rotate:string (account:string new-guard:guard)
+    (with-read accounts account { "guard" := old-guard }
+      (enforce-guard old-guard)
+      (update accounts account { "guard": new-guard })))
+
+  (defun precision:integer () 12)
+
+  (defun transfer:string (sender:string receiver:string amount:decimal)
+    (with-read accounts sender { "balance" := sender-bal }
+      (with-read accounts receiver { "balance" := receiver-bal }
+        (enforce (>= sender-bal amount) "Insufficient balance")
+        (update accounts sender { "balance": (- sender-bal amount) })
+        (update accounts receiver { "balance": (+ receiver-bal amount) }))))
+
+  (defun transfer-create:string (sender:string receiver:string receiver-guard:guard amount:decimal)
+    (with-default-read accounts receiver
+      { "balance": -1.0 }
+      { "balance" := balance }
+      (if (= balance -1.0)
+        (create-account receiver receiver-guard)
+        "Account exists"))
+    (transfer sender receiver amount))
+
+  (defcap TRANSFER:bool (sender:string receiver:string amount:decimal)
+    @managed amount TRANSFER-mgr
+    (enforce-guard (at 'guard (read accounts sender))))
+
+  (defun TRANSFER-mgr:decimal (managed:decimal requested:decimal)
+    (enforce (<= requested managed) "Transfer exceeds managed amount")
+    (- managed requested))
+
+  (defun mint:string (account:string amount:decimal)
+    (with-capability (GOVERNANCE)
+      (with-read accounts account { "balance" := bal }
+        (update accounts account { "balance": (+ bal amount) }))))
+
+  (defun total-supply:decimal () 0.0)
+)
+
+(create-table accounts)
+(commit-tx)
+
+;; Load DEX modules
+(load "dex-pair.pact")
+(load "yield-farming.pact")
+
+;; Test environment setup
+(begin-tx "Setup")
+(env-data {
+  "dex-admin": ["admin-key"],
+  "admin": ["admin-key"],
+  "alice": ["alice-key"],
+  "bob": ["bob-key"],
+  "charlie": ["charlie-key"],
+  "coin-keyset": ["admin-key"],
+  "upgrade": false
+})
+(env-keys ["admin-key"])
+
+(define-keyset 'dex-admin (read-keyset 'dex-admin))
+(define-keyset 'admin (read-keyset 'admin))
+(define-keyset 'alice (read-keyset 'alice))
+(define-keyset 'bob (read-keyset 'bob))
+(define-keyset 'charlie (read-keyset 'charlie))
+(define-keyset 'coin-keyset (read-keyset 'coin-keyset))
+
+;; Create user accounts
+(env-keys ["alice-key"])
+(test-token.create-account "alice" (read-keyset 'alice))
+(coin.create-account "alice" (read-keyset 'alice))
+
+(env-keys ["bob-key"])
+(test-token.create-account "bob" (read-keyset 'bob))
+(coin.create-account "bob" (read-keyset 'bob))
+
+(env-keys ["charlie-key"])
+(test-token.create-account "charlie" (read-keyset 'charlie))
+(coin.create-account "charlie" (read-keyset 'charlie))
+
+;; Mint initial tokens for testing
+(env-keys ["admin-key"])
+(test-token.mint "alice" 10000000.0)
+(test-token.mint "bob" 5000000.0)
+(test-token.mint "charlie" 2000000.0)
+
+;; Give users some KDA for testing
+(env-keys ["admin-key"])
+(coin.create-account "dex-pair-account" (create-capability-guard (dex-pair.GOVERNANCE)))
+(coin.create-account "alice" (read-keyset 'alice))
+(coin.create-account "bob" (read-keyset 'bob))
+(coin.create-account "charlie" (read-keyset 'charlie))
+(coin.coinbase "alice" (read-keyset 'alice) 1000000.0)
+(coin.coinbase "bob" (read-keyset 'bob) 500000.0)
+(coin.coinbase "charlie" (read-keyset 'charlie) 200000.0)
+
+(commit-tx)
+
+;; Test 1: Pair creation
+(begin-tx "Test pair creation")
+(use dex-pair)
+
+;; Create trading pair
+(env-keys ["admin-key"])
+(create-pair coin test-token)
+
+;; Verify pair exists
+(expect "Pair created successfully"
+  true
+  (< 0 (length (format "{}" [(get-pair coin test-token)]))))
+
+(commit-tx)
+
+;; Test 2: Add initial liquidity
+(begin-tx "Test add liquidity")
+(use dex-pair)
+
+;; Alice adds initial liquidity
+(env-keys ["alice-key"])
+(env-data { "user-guard": ["alice-key"] })
+
+;; First need to approve/install capabilities for transfers
+(install-capability (coin.TRANSFER "alice" (dex-pair.get-pair-account coin test-token) 100000.0))
+(install-capability (test-token.TRANSFER "alice" (dex-pair.get-pair-account coin test-token) 200000.0))
+
+(add-liquidity
+  coin test-token
+  100000.0 200000.0    ;; Desired amounts (1:2 ratio)
+  100000.0 200000.0    ;; Minimum amounts
+  "alice"
+  (add-time (at 'block-time (chain-data)) (hours 1)))
+
+;; Check reserves
+(let ((reserves (get-reserves coin test-token)))
+  (expect "Reserve 0 correct" 100000.0 (at 0 reserves))
+  (expect "Reserve 1 correct" 200000.0 (at 1 reserves)))
+
+;; Check Alice's LP balance
+(expect "Alice has LP tokens" true (> (get-lp-balance "alice") 0.0))
+
+(commit-tx)
+
+;; Test 3: Token swapping
+(begin-tx "Test token swapping")
+(use dex-pair)
+
+;; Check price before swap
+(let ((price-before (get-price coin test-token)))
+  (expect "Initial price is 2:1" 2.0 price-before))
+
+;; Bob swaps KDA for test tokens
+(env-keys ["bob-key"])
+(swap-exact-tokens-for-tokens
+  1000.0          ;; Amount in
+  1900.0          ;; Minimum amount out (allowing for slippage)
+  [coin test-token]
+  "bob"
+  (add-time (at 'block-time (chain-data)) (hours 1)))
+
+;; Check that price has moved
+(let ((price-after (get-price coin test-token)))
+  (expect "Price moved after swap" true (!= 2.0 price-after)))
+
+;; Check recent swaps
+(let ((recent-swaps (get-recent-swaps 10)))
+  (expect "Swap recorded" 1 (length recent-swaps)))
+
+(commit-tx)
+
+;; Test 4: Add more liquidity with different ratios
+(begin-tx "Test proportional liquidity")
+(use dex-pair)
+
+;; Charlie adds liquidity (should be proportional to current reserves)
+(env-keys ["charlie-key"])
+(env-data { "user-guard": ["charlie-key"] })
+
+(let ((reserves (get-reserves coin test-token)))
+  (let ((reserve0 (at 0 reserves))
+        (reserve1 (at 1 reserves)))
+
+    ;; Add 10% of current liquidity
+    (let ((amount0 (/ reserve0 10.0))
+          (amount1 (/ reserve1 10.0)))
+
+      (add-liquidity
+        coin test-token
+        amount0 amount1
+        (* amount0 0.95) (* amount1 0.95)  ;; 5% slippage tolerance
+        "charlie"
+        (add-time (at 'block-time (chain-data)) (hours 1))))))
+
+;; Check Charlie's LP balance
+(expect "Charlie has LP tokens" true (> (get-lp-balance "charlie") 0.0))
+
+(commit-tx)
+
+;; Test 5: Remove liquidity
+(begin-tx "Test remove liquidity")
+(use dex-pair)
+
+;; Alice removes half her liquidity
+(env-keys ["alice-key"])
+(let ((alice-lp-balance (get-lp-balance "alice")))
+  (let ((withdraw-amount (/ alice-lp-balance 2.0)))
+
+    (remove-liquidity
+      coin test-token
+      withdraw-amount
+      1.0 1.0  ;; Minimum amounts (very low for testing)
+      "alice"
+      (add-time (at 'block-time (chain-data)) (hours 1)))))
+
+;; Check Alice's LP balance decreased
+(expect "Alice LP balance decreased"
+  true
+  (< (get-lp-balance "alice") 100000.0))
+
+(commit-tx)
+
+;; Test 6: Yield farming setup
+(begin-tx "Test farming setup")
+(use yield-farming)
+
+;; Create a farming pool
+(env-keys ["admin-key"])
+(create-farm
+  "kda-test-farm"
+  "coin:test-token"  ;; LP token identifier
+  test-token         ;; Reward token
+  10.0               ;; 10 tokens per second
+  (at 'block-time (chain-data))  ;; Start now
+  (add-time (at 'block-time (chain-data)) (days 30))  ;; End in 30 days
+  1.0                ;; 1x multiplier
+  0.01               ;; 1% deposit fee
+  0.005)             ;; 0.5% withdrawal fee
+
+;; Check farm was created
+(let ((farm-info (get-farm "kda-test-farm")))
+  (expect "Farm created" "kda-test-farm" (at 'id farm-info)))
+
+(commit-tx)
+
+;; Test 7: Farming deposits (simplified)
+(begin-tx "Test farming deposits")
+(use yield-farming)
+
+;; Alice deposits LP tokens to farm (simplified for testing)
+(env-keys ["alice-key"])
+(deposit "kda-test-farm" "alice" 1000.0)
+
+;; Check user info
+(let ((user-info (get-user-info "kda-test-farm" "alice")))
+  (expect "Alice staked tokens" true (> (at 'staked user-info) 0.0)))
+
+(commit-tx)
+
+;; Test 8: Farming rewards
+(begin-tx "Test farming rewards")
+(use yield-farming)
+
+;; Fast forward time to accrue rewards
+(env-chain-data {
+  "block-time": (add-time (at 'block-time (chain-data)) (hours 1))
+})
+
+;; Check pending rewards
+(let ((pending (pending-rewards "kda-test-farm" "alice")))
+  (expect "Alice has pending rewards" true (> pending 0.0)))
+
+;; Harvest rewards
+(harvest "kda-test-farm" "alice")
+
+;; Check user harvested some rewards
+(let ((user-info (get-user-info "kda-test-farm" "alice")))
+  (expect "Alice harvested rewards" true (> (at 'total-harvested user-info) 0.0)))
+
+(commit-tx)
+
+;; Test 9: APR calculation
+(begin-tx "Test APR calculation")
+(use yield-farming)
+
+;; Calculate APR for the farm
+(let ((apr (calculate-apr "kda-test-farm")))
+  (expect "APR is positive" true (> apr 0.0))
+  (print (format "Farm APR: {}%" [apr])))
+
+(commit-tx)
+
+;; Test 10: Volume calculation
+(begin-tx "Test volume calculation")
+(use dex-pair)
+
+;; Check 24h volume
+(let ((volume (calculate-volume-24h coin)))
+  (expect "Volume recorded" true (>= volume 1000.0)))
+
+(commit-tx)
+
+;; Test 11: Price quotes
+(begin-tx "Test price quotes")
+(use dex-pair)
+
+;; Test quote function
+(let ((quoted-amount (quote 1000.0 100000.0 200000.0)))
+  (expect "Quote calculation correct" 2000.0 quoted-amount))
+
+;; Test get-amount-out
+(let ((amount-out (get-amount-out 1000.0 100000.0 200000.0)))
+  (expect "Amount out calculated" true (> amount-out 1900.0)))
+
+(commit-tx)
+
+;; Test 12: Multiple swaps for price impact testing
+(begin-tx "Test large swap price impact")
+(use dex-pair)
+
+;; Large swap to test price impact
+(env-keys ["alice-key"])
+(expect-that "Large swap moves price significantly"
+  (lambda (initial-price:decimal)
+    (do
+      ;; Execute large swap
+      (swap-exact-tokens-for-tokens
+        50000.0  ;; Large amount
+        1.0      ;; Very low minimum (just testing price impact)
+        [coin test-token]
+        "alice"
+        (add-time (at 'block-time (chain-data)) (hours 1)))
+
+      ;; Check price moved significantly
+      (let ((new-price (get-price coin test-token)))
+        (> (abs (- initial-price new-price)) (* initial-price 0.1)))))  ;; >10% price impact
+  (get-price coin test-token))
+
+(commit-tx)
+
+;; Test 13: Emergency functions
+(begin-tx "Test emergency functions")
+(use yield-farming)
+
+;; Bob deposits first
+(env-keys ["bob-key"])
+(env-data { "user-guard": ["bob-key"] })
+(let ((bob-lp-balance (get-lp-balance "bob")))
+  (if (> bob-lp-balance 0.0)
+    (deposit "kda-test-farm" "bob" bob-lp-balance)
+    "Bob has no LP tokens"))
+
+;; Emergency withdraw (no rewards)
+(emergency-withdraw "kda-test-farm" "bob")
+
+;; Check Bob's stake is zero
+(let ((user-info (get-user-info "kda-test-farm" "bob")))
+  (expect "Bob emergency withdrew" 0.0 (at 'staked user-info)))
+
+(commit-tx)
+
+;; Test 14: Farm management
+(begin-tx "Test farm management")
+(use yield-farming)
+
+;; Update farm parameters
+(env-keys ["admin-key"])
+(update-farm
+  "kda-test-farm"
+  15.0  ;; Increase reward rate to 15 tokens per second
+  (add-time (at 'block-time (chain-data)) (days 60))  ;; Extend end time
+  1.5)  ;; Increase multiplier
+
+;; Check farm was updated
+(let ((farm-info (get-farm "kda-test-farm")))
+  (expect "Farm multiplier updated" 1.5 (at 'multiplier farm-info)))
+
+(commit-tx)
+
+;; Test 15: Error conditions and edge cases
+(begin-tx "Test error conditions")
+(use dex-pair)
+(use yield-farming)
+
+;; Test invalid pair creation (duplicate)
+(env-keys ["admin-key"])
+(expect-failure "Cannot create duplicate pair"
+  "Pair already exists"
+  (create-pair coin test-token))
+
+;; Test swap with insufficient output
+(env-keys ["charlie-key"])
+(expect-failure "Insufficient output protection"
+  "Insufficient output amount"
+  (swap-exact-tokens-for-tokens
+    100.0
+    1000000.0  ;; Unrealistically high minimum output
+    [coin test-token]
+    "charlie"
+    (add-time (at 'block-time (chain-data)) (hours 1))))
+
+;; Test expired deadline
+(expect-failure "Deadline protection"
+  "Transaction expired"
+  (swap-exact-tokens-for-tokens
+    100.0
+    1.0
+    [coin test-token]
+    "charlie"
+    (add-time (at 'block-time (chain-data)) (seconds -1))))
+
+;; Test withdrawing more than deposited
+(expect-failure "Cannot withdraw more than deposited"
+  "Insufficient staked amount"
+  (withdraw "kda-test-farm" "alice" 1000000.0))
+
+;; Test zero amount operations
+(expect-failure "Cannot deposit zero"
+  "Amount must be positive"
+  (deposit "kda-test-farm" "alice" 0.0))
+
+(commit-tx)
+
+;; Test 16: Analytics and reporting
+(begin-tx "Test analytics")
+(use yield-farming)
+
+;; Take daily snapshot
+(env-keys ["admin-key"])
+(take-daily-snapshot "kda-test-farm")
+
+;; Get all user farms
+(let ((alice-farms (get-user-farms "alice")))
+  (expect "Alice has farms" true (> (length alice-farms) 0)))
+
+;; Get all farms
+(let ((all-farms (get-all-farms)))
+  (expect "At least one farm exists" true (> (length all-farms) 0)))
+
+(commit-tx)
+
+;; Final verification
+(begin-tx "Final verification")
+(use dex-pair)
+(use yield-farming)
+
+;; Print final state
+(let ((reserves (get-reserves coin test-token))
+      (price (get-price coin test-token))
+      (alice-lp (get-lp-balance "alice"))
+      (farm-info (get-farm "kda-test-farm")))
+
+  (print (format "Final reserves: {} KDA, {} TEST" [(at 0 reserves) (at 1 reserves)]))
+  (print (format "Final price: {} TEST per KDA" [price]))
+  (print (format "Alice LP balance: {}" [alice-lp]))
+  (print (format "Farm total staked: {}" [(at 'total-staked farm-info)]))
+  (print (format "Farm APR: {}%" [(at 'apr farm-info)])))
+
+(commit-tx)
+
+(print "All DEX tests completed successfully!")
+(print "✅ Pair creation and management")
+(print "✅ Liquidity provision and removal")
+(print "✅ Token swapping with price impact")
+(print "✅ Yield farming and rewards")
+(print "✅ APR calculations")
+(print "✅ Emergency functions")
+(print "✅ Error handling and edge cases")
+(print "✅ Analytics and reporting")

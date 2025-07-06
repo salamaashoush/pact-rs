@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Stop named things Haskell compact, and making bridges and workarounds. If we change the API, change everywhere to use the new API. The code is still in flux, and it is okay to break things and change to adapt to newer architecture as we discover. Stop duplicating code and having multiple versions of the same things or bridging one version to another. Ensure we have one coherent codebase.
 - Always check the Haskell code to collect info and verify that the architecture is compatible and 100% complete
 - Please dont simplify things just to fix errors, never comment code, add TODO like comments just fix the code and keep it fully functional, and always always follow the Haskell reference implementation for correctness
+- Never simplify functionality to fix errors
 
 ## Commands
 

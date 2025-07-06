@@ -77,7 +77,7 @@
       (enforce (!= to "") "To account cannot be empty")
 
       (let ((source-chain (chain-data 'chain-id))
-            (current-time (chain-data 'time))
+            (current-time (at 'block-time (chain-data)))
             (tx-hash (hash (chain-data 'tx-hash))))
 
         ;; Burn tokens from source account
@@ -141,7 +141,7 @@
         (enforce (> xfer-amount 0.0) "Invalid transfer amount")
 
         (let ((target-chain (chain-data 'chain-id))
-              (current-time (chain-data 'time)))
+              (current-time (at 'block-time (chain-data))))
 
           ;; Mint tokens to target account
           ;; Note: This assumes a mintable token implementation
@@ -221,7 +221,7 @@
       "proof-type": "burn-proof",
       "chain-id": (chain-data 'chain-id),
       "block-height": (chain-data 'block-height),
-      "timestamp": (chain-data 'time)
+      "timestamp": (at 'block-time (chain-data))
     })
 
   (defun validate-spv-proof:bool (proof:object expected-chain:string)
@@ -242,13 +242,13 @@
         
         (update xchain-transfers transfer-id { 
           "status": "cancelled",
-          "completed": (chain-data 'time)
+          "completed": (at 'block-time (chain-data))
         })
         
         ;; Log the cancellation
         (insert cancellation-log transfer-id {
           "reason": reason,
-          "cancelled-at": (chain-data 'time),
+          "cancelled-at": (at 'block-time (chain-data)),
           "cancelled-by": (tx-sender)
         })
         

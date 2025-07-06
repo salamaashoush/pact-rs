@@ -1,0 +1,99 @@
+;; test-dao-simple.repl
+;; Simplified test file for DAO governance system
+
+;; Load fungible interface and coin
+(env-data { "upgrade": false })
+(load "../../pact-tests/pact-tests/coin-v5/fungible-v2.pact")
+(load "../../pact-tests/pact-tests/coin-v5/coin-v5.pact")
+
+;; Load modules
+(load "governance-token.pact")
+(load "dao-governor.pact")
+
+;; Setup test environment
+(begin-tx "Setup keysets")
+(env-data {
+  "dao-admin": ["admin-key"],
+  "alice": ["alice-key"],
+  "bob": ["bob-key"],
+  "coin-keyset": ["admin-key"],
+  "upgrade": false
+})
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'dao-admin (read-keyset 'dao-admin))
+(define-keyset 'alice (read-keyset 'alice))
+(define-keyset 'bob (read-keyset 'bob))
+(define-keyset 'coin-keyset (read-keyset 'coin-keyset))
+
+(commit-tx)
+
+;; Test 1: Token creation and minting
+(begin-tx "Test token creation")
+(use governance-token)
+
+;; Create accounts
+(env-keys ["alice-key"])
+(create-account "alice" (read-keyset 'alice))
+
+(env-keys ["bob-key"])
+(create-account "bob" (read-keyset 'bob))
+
+;; Mint tokens (admin only)
+(env-keys ["admin-key"])
+(mint "alice" 1000000.0)
+(mint "bob" 500000.0)
+
+;; Test balances
+(expect "Alice balance correct" 1000000.0 (get-balance "alice"))
+(expect "Bob balance correct" 500000.0 (get-balance "bob"))
+
+;; Test initial voting power (self-delegated)
+(expect "Alice votes correct" 1000000.0 (get-votes "alice"))
+(expect "Bob votes correct" 500000.0 (get-votes "bob"))
+
+(commit-tx)
+
+;; Test 2: Delegation
+(begin-tx "Test delegation")
+(use governance-token)
+
+;; Alice delegates to Bob
+(env-keys ["alice-key"])
+(delegate "alice" "bob")
+
+;; Check voting power changed
+(expect "Alice has no votes after delegation" 0.0 (get-votes "alice"))
+(expect "Bob has combined votes" 1500000.0 (get-votes "bob"))
+
+;; Check delegation record
+(expect "Delegation recorded" "bob" (get-delegates "alice"))
+
+(commit-tx)
+
+;; Test 3: Basic proposal creation
+(begin-tx "Test proposal creation")
+(use dao-governor)
+
+;; Bob can propose (has enough voting power)
+(env-keys ["bob-key"])
+(env-chain-data { "block-height": 100, "block-time": (time "2024-01-01T00:00:00Z") })
+
+;; Create a simple proposal
+(let ((result (propose 
+        "bob"
+        "Test Proposal"
+        "A test proposal for the DAO"
+        ["test"]
+        [0.0]
+        ["test-function"]
+        ["test-data"])))
+  (expect "Proposal created successfully" true (contains "Proposal" result)))
+
+(commit-tx)
+
+(print "Basic DAO tests completed successfully!")
+(print "✅ Token creation and minting")
+(print "✅ Delegation system") 
+(print "✅ Basic proposal creation")

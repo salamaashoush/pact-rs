@@ -1,0 +1,129 @@
+;; Test file for Simple Token Example
+
+(begin-tx "Setup test environment")
+
+;; Set up test environment with keyset
+(env-data {
+  "token-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+
+;; Define the keyset
+(define-keyset 'token-admin (read-keyset "token-admin"))
+
+;; Load the module
+(load "simple-token.pact")
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST BASIC MODULE FUNCTIONALITY
+;; ============================================================================
+
+(begin-tx "Test module functions")
+
+;; Set up user keysets
+(env-data {
+  "alice-keyset": {
+    "keys": ["alice-key"],
+    "pred": "keys-all"
+  },
+  "bob-keyset": {
+    "keys": ["bob-key"],
+    "pred": "keys-all"
+  }
+})
+
+;; Test account creation
+(expect "Account creation works"
+  "Account alice created"
+  (simple-token.create-account "alice" (read-keyset "alice-keyset")))
+
+(expect "Bob account creation works"
+  "Account bob created"
+  (simple-token.create-account "bob" (read-keyset "bob-keyset")))
+
+;; Test balance checking
+(expect "Initial balance is zero"
+  0.0
+  (simple-token.get-balance "alice"))
+
+;; Test minting (admin only)
+(env-keys ["admin-key"])
+(expect "Minting works"
+  "Minted 100.0 tokens to alice"
+  (simple-token.mint "alice" (read-keyset "alice-keyset") 100.0))
+
+;; Check balance after minting
+(expect "Balance after minting"
+  100.0
+  (simple-token.get-balance "alice"))
+
+;; Test transfer
+(env-keys ["alice-key"]) ; Switch to alice's key
+(expect "Transfer works"
+  "Transferred 30.0 from alice to bob"
+  (simple-token.transfer "alice" "bob" 30.0))
+
+;; Check balances after transfer
+(expect "Alice balance after transfer"
+  70.0
+  (simple-token.get-balance "alice"))
+
+(expect "Bob balance after transfer"
+  30.0
+  (simple-token.get-balance "bob"))
+
+;; Test transfer-create to new account
+(env-data {
+  "carol-keyset": {
+    "keys": ["carol-key"],
+    "pred": "keys-all"
+  }
+})
+
+(expect "Transfer-create works"
+  "Transferred 10.0 from alice to carol"
+  (simple-token.transfer-create "alice" "carol" (read-keyset "carol-keyset") 10.0))
+
+(expect "Carol balance after transfer-create"
+  10.0
+  (simple-token.get-balance "carol"))
+
+(expect "Alice balance after second transfer"
+  60.0
+  (simple-token.get-balance "alice"))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ERROR CONDITIONS
+;; ============================================================================
+
+(begin-tx "Test error conditions")
+
+;; Test insufficient balance
+(env-keys ["alice-key"])
+(expect-failure "Insufficient balance rejected"
+  "Insufficient balance"
+  (simple-token.transfer "alice" "bob" 100.0))
+
+;; Test unauthorized minting
+(env-keys ["bob-key"])
+(expect-failure "Unauthorized minting fails"
+  "Keyset failure"
+  (simple-token.mint "dave" (keyset-ref-guard 'token-admin) 50.0))
+
+;; Test invalid transfer (wrong key)
+(env-keys ["bob-key"])
+(expect-failure "Unauthorized transfer fails"
+  "Keyset failure"
+  (simple-token.transfer "alice" "bob" 10.0))
+
+(commit-tx)
+
+(print "All simple token tests passed!")

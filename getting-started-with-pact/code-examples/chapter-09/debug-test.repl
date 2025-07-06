@@ -1,0 +1,62 @@
+;; Debug test for Chapter 9
+(begin-tx "Load interfaces and implementations")
+
+;; Setup test environment
+(env-data {
+  "coin-admin": ["admin"],
+  "alice": ["alice"],
+  "bob": ["bob"]
+})
+
+(env-keys ["admin"])
+
+;; Define keysets
+(define-keyset "coin-admin" (read-keyset "coin-admin"))
+(define-keyset "alice" (read-keyset "alice"))
+(define-keyset "bob" (read-keyset "bob"))
+
+;; Load interface definitions
+(load "fungible-interface.pact")
+
+;; Load implementations
+(load "simple-coin.pact")
+
+(commit-tx)
+
+(begin-tx "Test basic operations")
+
+;; Test coin implementation
+(use simple-coin)
+
+;; Create test accounts
+(env-keys ["admin"])
+(mint "alice" (keyset-ref-guard "alice") 1000.0)
+(mint "bob" (keyset-ref-guard "bob") 500.0)
+
+;; Test interface compliance
+(expect "Balance function works"
+  1000.0
+  (get-balance "alice"))
+
+(expect "Supply function works"
+  1500.0
+  (get-supply))
+
+;; Test transfer with capability
+(env-keys ["alice"])
+(install-capability (simple-coin.TRANSFER "alice" "bob" 100.0))
+(expect "Transfer works with proper authorization"
+  "Transfer succeeded"
+  (transfer "alice" "bob" 100.0))
+
+(expect "Alice balance decreased"
+  900.0
+  (get-balance "alice"))
+
+(expect "Bob balance increased"
+  600.0
+  (get-balance "bob"))
+
+(commit-tx)
+
+(print "Debug test passed!")

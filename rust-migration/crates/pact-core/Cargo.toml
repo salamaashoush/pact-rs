@@ -1,0 +1,37 @@
+[package]
+name = "pact-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Core foundation library for Pact (consolidated values, names, errors, gas, capabilities)"
+
+[dependencies]
+# External dependencies (consolidated from all merged crates)
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+compact_str = { workspace = true, features = ["serde"] }
+num-bigint = { workspace = true }
+num-rational = { workspace = true }
+num-traits = { workspace = true }
+indexmap = { workspace = true }
+bytes = { workspace = true }
+base64ct = "1.6"
+chrono = "0.4"
+hex = "0.4"
+colored = "2.0"
+
+# Internal dependencies that cannot be avoided yet
+# pact-parser = { path = "../pact-parser" }  # Removed - creates circular dependency
+# pact-schema = { path = "../pact-schema" }  # Removed - creates circular dependency
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

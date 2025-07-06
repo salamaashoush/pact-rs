@@ -42,7 +42,7 @@
     (insert accounts account {
       "balance": 0.0,
       "guard": guard,
-      "created": (time)
+      "created": (at 'block-time (chain-data))
     })
     (format "Account {} created" [account]))
   
@@ -57,27 +57,39 @@
         { "balance" := from-balance }
         (enforce (>= from-balance amount) "Insufficient balance")
         (update accounts from { "balance": (- from-balance amount) })
+        (with-read accounts to
+          { "balance" := to-balance }
+          (update accounts to { "balance": (+ to-balance amount) }))))
+    (format "Transferred {} from {} to {}" [amount from to]))
+  
+  (defun transfer-create:string (from:string to:string to-guard:guard amount:decimal)
+    @doc "Transfer tokens, creating the recipient account if needed"
+    (with-capability (TRANSFER from to amount)
+      (with-read accounts from 
+        { "balance" := from-balance }
+        (enforce (>= from-balance amount) "Insufficient balance")
+        (update accounts from { "balance": (- from-balance amount) })
         (with-default-read accounts to
-          { "balance": 0.0, "guard": (keyset-ref-guard 'default), "created": (time) }
+          { "balance": 0.0 }
           { "balance" := to-balance }
           (write accounts to {
             "balance": (+ to-balance amount),
-            "guard": (keyset-ref-guard 'default),
-            "created": (time)
+            "guard": to-guard,
+            "created": (at 'block-time (chain-data))
           }))))
     (format "Transferred {} from {} to {}" [amount from to]))
   
   ;; Admin functions
-  (defun mint:string (account:string amount:decimal)
-    @doc "Mint new tokens (admin only)"
+  (defun mint:string (account:string guard:guard amount:decimal)
+    @doc "Mint new tokens to an account (admin only)"
     (with-capability (GOVERNANCE)
       (with-default-read accounts account
-        { "balance": 0.0, "guard": (keyset-ref-guard 'default), "created": (time) }
+        { "balance": 0.0 }
         { "balance" := current-balance }
         (write accounts account {
           "balance": (+ current-balance amount),
-          "guard": (keyset-ref-guard 'default),
-          "created": (time)
+          "guard": guard,
+          "created": (at 'block-time (chain-data))
         })))
     (format "Minted {} tokens to {}" [amount account]))
 )

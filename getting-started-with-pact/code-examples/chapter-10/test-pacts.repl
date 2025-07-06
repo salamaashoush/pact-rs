@@ -44,15 +44,15 @@
   (= (get-escrow-status "test-escrow-1") "active"))
 
 ;; Get the pact ID for continuation
-(let ((pact-id (pact-id)))
+(let ((pid (pact-id)))
   (expect "Pact initialized at step 0"
     0
-    (at 'step (describe-pact pact-id))))
+    (at 'step (describe-pact pid))))
 
 ;; Continue to step 1 (normal completion)
 (env-keys ["admin-key"])  ;; Simulate completion by admin/seller
-(let ((pact-id (at 'pact-id (get-escrow "test-escrow-1"))))
-  (continue-pact pact-id false))
+(let ((pid (at 'pid (get-escrow "test-escrow-1"))))
+  (continue-pact pid false))
 
 (expect "Escrow completed"
   "completed"
@@ -69,17 +69,17 @@
 (create-escrow "test-escrow-2" "alice" "bob" 50.0 1 "arbitrator")  ;; 1 hour timeout
 
 ;; Get pact for continuation
-(let ((pact-id (pact-id)))
+(let ((pid (pact-id)))
   
   ;; Fast forward time past timeout
   (env-chain-data { 
     "chain-id": "0", 
     "block-height": 200,
-    "time": (add-time (chain-data 'time) (hours 2))  ;; 2 hours later
+    "time": (add-time (at 'block-time (chain-data)) (hours 2))  ;; 2 hours later
   })
   
   ;; Execute rollback due to timeout
-  (continue-pact pact-id true))
+  (continue-pact pid true))
 
 (expect "Escrow refunded due to timeout"
   "refunded"
@@ -213,35 +213,36 @@
 (begin-tx "Test pact property validation")
 
 ;; Test pact execution properties
+(use basic-escrow)
+
 (defun test-pact-properties ()
   @doc "Test fundamental pact properties"
   
   ;; Property 1: Pacts execute steps in order
-  (use basic-escrow)
   (env-keys ["alice-key"])
   (create-escrow "prop-test-1" "alice" "bob" 100.0 24 "arbitrator")
   
-  (let ((pact-id (pact-id)))
+  (let ((pid (pact-id)))
     (expect "Pact starts at step 0"
       0
-      (at 'step (describe-pact pact-id)))
+      (at 'step (describe-pact pid)))
     
     ;; Continue to next step
-    (continue-pact pact-id false)
+    (continue-pact pid false)
     (expect "Pact advances to step 1"
       1
-      (at 'step (describe-pact pact-id))))
+      (at 'step (describe-pact pid))))
   
   ;; Property 2: Rollbacks undo step effects
   (create-escrow "prop-test-2" "alice" "bob" 50.0 1 "arbitrator")
-  (let ((pact-id (pact-id))
+  (let ((pid (pact-id))
         (initial-status (get-escrow-status "prop-test-2")))
     
     ;; Fast forward time and rollback
     (env-chain-data { 
-      "time": (add-time (chain-data 'time) (hours 2))
+      "time": (add-time (at 'block-time (chain-data)) (hours 2))
     })
-    (continue-pact pact-id true)
+    (continue-pact pid true)
     
     (expect "Rollback changes status appropriately"
       "refunded"

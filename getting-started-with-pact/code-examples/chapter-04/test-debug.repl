@@ -1,0 +1,16 @@
+;; Test debug token
+
+(begin-tx)
+(env-data { "token-admin": ["admin-key"] })
+(env-keys ["admin-key"])
+(define-keyset 'token-admin (read-keyset "token-admin"))
+(load "debug-token.pact")
+(commit-tx)
+
+(begin-tx)
+(debug-token.create-account "alice" (keyset-ref-guard 'token-admin))
+(debug-token.mint "alice" 100.0)
+(expect "Balance is 100" 100.0 (debug-token.get-balance "alice"))
+(commit-tx)
+
+(print "Debug test passed!")

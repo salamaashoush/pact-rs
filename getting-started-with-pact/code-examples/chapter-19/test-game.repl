@@ -1,0 +1,302 @@
+;; test-game.repl
+;; Test blockchain RPG functionality
+
+(begin-tx "Setup test environment")
+
+(env-data {
+  "game-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  },
+  "alice-keyset": {
+    "keys": ["alice-key"],
+    "pred": "keys-all"
+  },
+  "bob-keyset": {
+    "keys": ["bob-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'game-admin (read-keyset "game-admin"))
+(define-keyset 'alice-keyset (read-keyset "alice-keyset"))
+(define-keyset 'bob-keyset (read-keyset "bob-keyset"))
+
+;; Mock coin module for testing
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defschema account
+    balance:decimal
+    guard:guard)
+  
+  (deftable accounts:{account})
+  
+  (defun details:object (account:string)
+    { "account": account
+    , "balance": 1000.0
+    , "guard": (read-keyset "alice-keyset") })
+)
+(create-table accounts)
+
+;; Load game modules
+(load "game-characters.pact")
+(load "game-combat.pact")
+(load "game-items.pact")
+
+(commit-tx)
+
+;; Test Character Creation
+(begin-tx "Test character creation")
+
+(env-keys ["alice-key"])
+(env-chain-data { "sender": "alice", "block-height": 1000 })
+
+;; Create Alice's warrior
+(expect "Warrior created"
+  "CHAR-alice-1000"
+  (game-characters.create-character "alice" "Thorin" "warrior"))
+
+;; Create Alice's mage
+(env-chain-data { "sender": "alice", "block-height": 1001 })
+(expect "Mage created"
+  "CHAR-alice-1001"
+  (game-characters.create-character "alice" "Gandara" "mage"))
+
+;; Check warrior stats
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Warrior name" "Thorin" (at 'name warrior))
+  (expect "Warrior class" "warrior" (at 'class warrior))
+  (expect "Warrior strength" 15 (at 'strength warrior))
+  (expect "Warrior health" 120 (at 'max-health warrior))
+  (expect "Warrior level" 1 (at 'level warrior)))
+
+;; Check mage stats
+(let ((mage (game-characters.get-character "CHAR-alice-1001")))
+  (expect "Mage intelligence" 15 (at 'intelligence mage))
+  (expect "Mage mana" 120 (at 'max-mana mage))
+  (expect "Mage health" 48 (at 'max-health mage)))
+
+(commit-tx)
+
+;; Test Item System
+(begin-tx "Test item system")
+
+(env-keys ["admin-key"])
+
+;; Create item templates
+(expect "Sword created"
+  "Item template iron-sword created"
+  (game-items.create-item-template 
+    "iron-sword" 
+    "Iron Sword" 
+    "A basic iron sword"
+    "weapon"
+    "common"
+    1
+    { "strength": 5, "attack": 10 }))
+
+(expect "Armor created"
+  "Item template leather-armor created"
+  (game-items.create-item-template
+    "leather-armor"
+    "Leather Armor"
+    "Basic leather protection"
+    "armor"
+    "common"
+    1
+    { "vitality": 3, "defense": 5 }))
+
+(expect "Potion created"
+  "Item template health-potion created"
+  (game-items.create-item-template
+    "health-potion"
+    "Health Potion"
+    "Restores 50 HP"
+    "consumable"
+    "common"
+    1
+    { "effects": ["heal-50"] }))
+
+;; Give items to character
+(env-keys ["alice-key"])
+(env-chain-data { "sender": "alice" })
+
+(expect "Sword given"
+  "Added 1 iron-sword to inventory"
+  (game-items.give-item "CHAR-alice-1000" "iron-sword" 1))
+
+(expect "Armor given"
+  "Added 1 leather-armor to inventory"
+  (game-items.give-item "CHAR-alice-1000" "leather-armor" 1))
+
+(expect "Potions given"
+  "Added 5 health-potion to inventory"
+  (game-items.give-item "CHAR-alice-1000" "health-potion" 5))
+
+;; Check inventory
+(let ((inventory (game-items.get-inventory "CHAR-alice-1000")))
+  (expect "3 inventory slots used" 3 (length inventory)))
+
+;; Equip items
+(expect "Sword equipped"
+  "Equipped iron-sword in weapon slot"
+  (game-items.equip-item "CHAR-alice-1000" 0))
+
+(expect "Armor equipped"
+  "Equipped leather-armor in armor slot"
+  (game-items.equip-item "CHAR-alice-1000" 1))
+
+;; Check equipped items
+(let ((equipped (game-items.get-equipped-items "CHAR-alice-1000")))
+  (expect "Weapon equipped" 
+    "Iron Sword" 
+    (at 'name (at 'weapon equipped)))
+  (expect "Armor equipped" 
+    "Leather Armor" 
+    (at 'name (at 'armor equipped))))
+
+(commit-tx)
+
+;; Test Experience and Leveling
+(begin-tx "Test leveling system")
+
+(env-keys ["alice-key"])
+
+;; Give experience
+(expect "Experience gained"
+  "Gained 50 experience"
+  (game-characters.gain-experience "CHAR-alice-1000" 50))
+
+;; Give enough for level up (need 100 for level 2)
+(expect "Level up!"
+  "Level up! Now level 2"
+  (game-characters.gain-experience "CHAR-alice-1000" 50))
+
+;; Check updated stats
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Level 2" 2 (at 'level warrior))
+  (expect "Strength increased" 18 (at 'strength warrior))
+  (expect "Max health increased" 140 (at 'max-health warrior))
+  (expect "Full heal on level up" 140 (at 'health warrior)))
+
+(commit-tx)
+
+;; Test Combat System  
+(begin-tx "Test combat")
+
+(env-keys ["bob-key"])
+(env-chain-data { "sender": "bob", "block-height": 2000 })
+
+;; Create Bob's character
+(expect "Bob's rogue created"
+  "CHAR-bob-2000"
+  (game-characters.create-character "bob" "Shadow" "rogue"))
+
+;; Mock updating the coin details for Bob
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defschema account
+    balance:decimal
+    guard:guard)
+  
+  (deftable accounts:{account})
+  
+  (defun details:object (account:string)
+    (if (= account "alice")
+      { "account": account
+      , "balance": 1000.0
+      , "guard": (read-keyset "alice-keyset") }
+      { "account": account
+      , "balance": 1000.0
+      , "guard": (read-keyset "bob-keyset") }))
+)
+
+;; Start battle
+(env-keys ["alice-key"])
+(expect "Battle initiated"
+  "BATTLE-CHAR-alice-1000-CHAR-bob-2000-2000"
+  (game-combat.initiate-battle "CHAR-alice-1000" "CHAR-bob-2000"))
+
+;; Perform attacks
+(expect "Attack performed"
+  true
+  (contains "attacks" 
+    (game-combat.attack "BATTLE-CHAR-alice-1000-CHAR-bob-2000-2000" 
+                       "CHAR-alice-1000")))
+
+;; Check battle state
+(let ((battle (game-combat.get-battle "BATTLE-CHAR-alice-1000-CHAR-bob-2000-2000")))
+  (expect "Battle active" "active" (at 'status battle))
+  (expect "Damage dealt" true 
+    (< (at 'defender-health battle) 
+       (at 'max-health (game-characters.get-character "CHAR-bob-2000")))))
+
+(commit-tx)
+
+;; Test Item Usage
+(begin-tx "Test consumables")
+
+(env-keys ["alice-key"])
+
+;; Damage the warrior first
+(game-characters.update-status "CHAR-alice-1000" "active")
+(update game-characters.characters "CHAR-alice-1000" { "health": 90 })
+
+;; Use health potion
+(expect "Potion used"
+  "Used health-potion"
+  (game-items.use-item "CHAR-alice-1000" 2))
+
+;; Check health restored
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Health restored" 140 (at 'health warrior)))
+
+;; Check potion quantity reduced
+(let ((potions (filter (lambda (item) (= (at 'item-id item) "health-potion"))
+                      (game-items.get-inventory "CHAR-alice-1000"))))
+  (expect "4 potions remaining" 4 (at 'quantity (at 0 potions))))
+
+(commit-tx)
+
+(print "All game tests passed!")
+
+;; Additional test for error cases
+(begin-tx "Test error cases")
+
+;; Test invalid class
+(env-keys ["alice-key"])
+(expect-failure "Invalid class fails"
+  "Invalid class"
+  (game-characters.create-character "alice" "BadClass" "invalid"))
+
+;; Test equipping without meeting level requirement
+(env-keys ["admin-key"])
+(game-items.create-item-template
+  "epic-sword"
+  "Epic Sword"
+  "Requires level 10"
+  "weapon"
+  "epic"
+  10
+  { "strength": 20, "attack": 50 })
+
+(env-keys ["alice-key"])
+(game-items.give-item "CHAR-alice-1000" "epic-sword" 1)
+
+(expect-failure "Level requirement not met"
+  "Level requirement not met"
+  (game-items.equip-item "CHAR-alice-1000" 3))
+
+;; Test using non-consumable
+(expect-failure "Cannot use non-consumable"
+  "Item is not consumable"
+  (game-items.use-item "CHAR-alice-1000" 0))
+
+(commit-tx)
+
+(print "Error case tests completed!")

@@ -1,0 +1,5 @@
+(load "test.pact")
+
+(my-function 5 "hello")
+(let ((x MY_CONSTANT))
+  (my-function x "world"))

@@ -1,0 +1,41 @@
+;; Debug guard test
+(begin-tx)
+
+(env-data {
+  "coin-admin": ["admin"],
+  "alice": ["alice"]
+})
+
+(env-keys ["admin"])
+
+(define-keyset "coin-admin" (read-keyset "coin-admin"))
+(define-keyset "alice" (read-keyset "alice"))
+
+(load "fungible-interface.pact")
+(load "simple-coin.pact")
+
+(commit-tx)
+
+(begin-tx)
+(use simple-coin)
+
+;; Create alice account
+(env-keys ["admin"])
+(mint "alice" (keyset-ref-guard "alice") 1000.0)
+
+;; Check alice's account details
+(let ((account-details (details "alice")))
+  (print (format "Alice account: {}" [account-details])))
+
+;; Check the guard directly
+(let ((guard (account-guard "alice")))
+  (print (format "Alice guard: {}" [guard])))
+
+;; Test guard enforcement directly
+(env-keys ["alice"])
+(try
+  (enforce-guard (account-guard "alice"))
+  (print "Guard enforcement succeeded")
+)
+
+(commit-tx)

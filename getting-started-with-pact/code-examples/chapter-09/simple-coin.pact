@@ -29,8 +29,7 @@
   ;; Events
   (defcap TRANSFER:bool (sender:string receiver:string amount:decimal)
     @doc "Transfer capability and event"
-    @managed amount TRANSFER_mgr
-    @event
+    @managed amount TRANSFER-mgr
     (enforce (!= sender receiver) "same sender and receiver")
     (enforce (> amount 0.0) "transfer amount must be positive")
     (enforce-valid-account sender)
@@ -38,7 +37,7 @@
     (enforce-unit amount)
     (enforce-guard (account-guard sender)))
 
-  (defun TRANSFER_mgr:decimal (managed:decimal requested:decimal)
+  (defun TRANSFER-mgr:decimal (managed:decimal requested:decimal)
     @doc "Manages TRANSFER capability"
     (enforce (<= requested managed) "requested exceeds managed")
     (- managed requested))
@@ -82,7 +81,7 @@
     @doc "Get account balance"
     (at 'balance (read accounts account)))
 
-  (defun details:object{account} (account:string)
+  (defun details:object{fungible-v2.account} (account:string)
     @doc "Get account details"
     (read accounts account))
 

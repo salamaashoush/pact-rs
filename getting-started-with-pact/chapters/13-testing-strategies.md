@@ -845,7 +845,7 @@ Property-based testing generates many test cases automatically, focusing on inva
         "success-rate": (/ passed-tests total-tests)
       },
       "detailed-results": test-results,
-      "timestamp": (chain-data 'time) }))
+      "timestamp": (at 'block-time (chain-data)) }))
 ```
 
 ### Test Utilities and Helpers

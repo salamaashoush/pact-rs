@@ -337,7 +337,7 @@
   @doc "Test performance of cross-namespace operations"
   
   ;; Direct namespace reference (should be efficient)
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (protocol-utils.math.safe-add 100.0 200.0)
     (protocol-utils.math.safe-multiply 50.0 2.0)
     (protocol-utils.math.safe-divide 100.0 4.0)

@@ -1,0 +1,26 @@
+; Simple test for PactZombies Lesson 1
+; =====================================
+
+; Load the zombie contract
+(begin-tx)
+(load "zombie-simple.pact")
+(create-table zombies-table)
+(commit-tx)
+
+; Create a zombie
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+(print (create-zombie "Bob"))
+(commit-tx)
+
+; Check our zombie
+(begin-tx)
+(print "All zombies:")
+(with-read zombies-table "zombie_41946839964908535261541723921" 
+  { "name" := name, "dna" := dna, "level" := level, "owner" := owner }
+  (print (format "Name: {}, DNA: {}, Level: {}, Owner: {}" [name dna level owner])))
+(commit-tx)
+
+(print "")
+(print "🎉 Success! You created your first zombie!")

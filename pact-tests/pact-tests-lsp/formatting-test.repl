@@ -1,0 +1,26 @@
+(defun  badly-formatted-function   (x:integer)    @doc "This function needs formatting"
+  (let*
+    (  (y    (* x    2))
+     (z
+     (+   y   1)  ) )
+  (if (>   x  0)
+(+  z  1)
+  z)  ))
+
+(defconst   BADLY_FORMATTED_CONST   10  )
+
+(module    poorly-formatted-module   GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defun      nested-function     (a:integer  b:string)
+    @doc   "Another function that needs formatting"
+    (let  ((result   (format   "{}:{}"  [a b]   ) ))
+      result  )  )
+
+(defpact  badly-formatted-pact   (amount:decimal)
+  (step "Step 1"
+    (with-capability   (  GOVERNANCE  )
+      (format "Transferring {}"  [amount]  ) ) )
+  (step "Step 2"
+    (format "Transferred {}" [amount])  ) )
+)

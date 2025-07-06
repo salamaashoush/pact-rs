@@ -1,0 +1,15 @@
+/home/salama/Workspace/Kadena/pact-5/pactlings/target/debug/deps/libassert_cmd-08bef4697cfb3e23.rmeta: /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/lib.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/macros.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/assert.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/cargo.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/cmd.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/output.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/color.rs /home/salama/Workspace/Kadena/pact-5/pactlings/target/debug/build/assert_cmd-adcb7c51d8ef4d21/out/current_target.txt /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/../README.md
+
+/home/salama/Workspace/Kadena/pact-5/pactlings/target/debug/deps/assert_cmd-08bef4697cfb3e23.d: /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/lib.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/macros.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/assert.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/cargo.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/cmd.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/output.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/color.rs /home/salama/Workspace/Kadena/pact-5/pactlings/target/debug/build/assert_cmd-adcb7c51d8ef4d21/out/current_target.txt /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/../README.md
+
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/lib.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/macros.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/assert.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/cargo.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/cmd.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/output.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/color.rs:
+/home/salama/Workspace/Kadena/pact-5/pactlings/target/debug/build/assert_cmd-adcb7c51d8ef4d21/out/current_target.txt:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/assert_cmd-2.0.17/src/../README.md:
+
+# env-dep:OUT_DIR=/home/salama/Workspace/Kadena/pact-5/pactlings/target/debug/build/assert_cmd-adcb7c51d8ef4d21/out

@@ -249,7 +249,7 @@ false
 ;; Object type annotations
 (defun create-user:object (name:string email:string)
   @doc "Create user object"
-  { "name": name, "email": email, "created": (chain-data 'time) })
+  { "name": name, "email": email, "created": (at 'block-time (chain-data)) })
 ```
 
 ## Variables and Binding
@@ -585,7 +585,7 @@ false
 (defun create-user (name:string email:string)
   (enforce (!= name "") "Name cannot be empty")
   (enforce (validate-email email) "Invalid email format")
-  { "name": name, "email": email, "created": (chain-data 'time) })
+  { "name": name, "email": email, "created": (at 'block-time (chain-data)) })
 ```
 
 ### Optional Values and Defaults

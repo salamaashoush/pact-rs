@@ -1,0 +1,4 @@
+(begin-tx)
+(load "debug-step.pact")
+(commit-tx)
+(print "Debug step loaded successfully")

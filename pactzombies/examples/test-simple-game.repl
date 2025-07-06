@@ -1,0 +1,121 @@
+; Test Simple Zombie Game
+; =======================
+
+; Load the contract
+(begin-tx)
+(load "simple-zombie-game.pact")
+(create-table zombies)
+(create-table players)
+(commit-tx)
+
+; Test 1: Create accounts
+(begin-tx)
+(use simple-zombies)
+
+(env-data {"sender": "alice"})
+(print "Creating Alice's account:")
+(print (create-account "alice"))
+
+(env-data {"sender": "bob"})
+(print "Creating Bob's account:")
+(print (create-account "bob"))
+(commit-tx)
+
+; Test 2: Create zombies
+(begin-tx)
+(use simple-zombies)
+
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T10:00:00Z")})
+(print "")
+(print "Alice creates zombies:")
+(print (create-zombie "Zombie Alpha"))
+(print (create-zombie "Zombie Beta"))
+
+(env-data {"sender": "bob"})
+(print "")
+(print "Bob creates a zombie:")
+(print (create-zombie "Zombie Gamma"))
+(commit-tx)
+
+; Test 3: Check player info
+(begin-tx)
+(use simple-zombies)
+
+(print "")
+(print "Player Information:")
+(print "Alice:")
+(print (get-player-info "alice"))
+(print "")
+(print "Bob:")
+(print (get-player-info "bob"))
+(commit-tx)
+
+; Test 4: List zombies
+(begin-tx)
+(use simple-zombies)
+
+(print "")
+(print "Alice's zombies:")
+(map (lambda (z) 
+  (print (format "- {} (Level {}, Power {})" 
+    [(at "name" z) (at "level" z) (at "power" z)])))
+  (get-player-zombies "alice"))
+
+(print "")
+(print "Bob's zombies:")
+(map (lambda (z) 
+  (print (format "- {} (Level {}, Power {})" 
+    [(at "name" z) (at "level" z) (at "power" z)])))
+  (get-player-zombies "bob"))
+(commit-tx)
+
+; Test 5: Battle!
+(begin-tx)
+(use simple-zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-height": 12345})
+
+(print "")
+(print "Battle Time!")
+
+; Get zombie IDs
+(let ((alice-zombies (get-player-zombies "alice"))
+      (bob-zombies (get-player-zombies "bob")))
+  (if (and (> (length alice-zombies) 0) (> (length bob-zombies) 0))
+    (let ((alice-zombie-id (create-zombie-id "Zombie Alpha" "alice"))
+          (bob-zombie-id (create-zombie-id "Zombie Gamma" "bob")))
+      (print (format "Alice's zombie attacks Bob's zombie!"))
+      (print (battle alice-zombie-id bob-zombie-id)))
+    (print "Not enough zombies for battle")))
+(commit-tx)
+
+; Test 6: Check results after battle
+(begin-tx)
+(use simple-zombies)
+
+(print "")
+(print "After Battle:")
+(print "")
+(print "Top Zombies by Wins:")
+(let ((top-zombies (get-top-zombies 5)))
+  (map (lambda (idx)
+    (let ((z (at idx top-zombies)))
+      (print (format "{}. {} - {} wins, {} losses (Owner: {})"
+        [(+ idx 1) (at "name" z) (at "wins" z) (at "losses" z) (at "owner" z)]))))
+    (enumerate 0 (- (length top-zombies) 1))))
+
+(print "")
+(print "Updated Player Info:")
+(print (format "Alice: {} coins" [(at "coins" (get-player-info "alice"))]))
+(print (format "Bob: {} coins" [(at "coins" (get-player-info "bob"))]))
+(commit-tx)
+
+(print "")
+(print "🎉 Simple zombie game test complete!")
+(print "This example demonstrates:")
+(print "✅ Account creation")
+(print "✅ Zombie creation with fees")
+(print "✅ Battle mechanics")
+(print "✅ Rewards system")
+(print "✅ Leaderboards")

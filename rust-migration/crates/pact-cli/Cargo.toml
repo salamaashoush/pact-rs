@@ -1,0 +1,68 @@
+[package]
+name = "pact-cli"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Command-line interface for the Pact smart contract language"
+
+[[bin]]
+name = "pact"
+path = "src/main.rs"
+[dependencies]
+# Core Pact dependencies
+pact-compiler = { path = "../pact-compiler" }
+pact-cek = { path = "../pact-cek" }
+pact-syntax = { path = "../pact-syntax" }
+pact-core = { path = "../pact-core" }
+pact-ir = { path = "../pact-ir" }
+# pact-builtins = { path = "../pact-builtins" } # Removed - builtins are in pact-cek now
+pact-crypto = { path = "../pact-crypto" }
+pact-db = { path = "../pact-db" }
+pact-schema = { path = "../pact-schema" }
+# pact-ffi = { path = "../pact-ffi" } # TODO: Fix FFI compilation
+pact-repl = { path = "../pact-repl" }
+pact-server = { path = "../pact-server" } # Consolidated pact-request-api + pact-server
+# pact-lsp = { path = "../pact-lsp" } # TODO: Fix LSP compilation errors
+# CLI and configuration
+clap = { version = "4.5", features = ["derive", "color", "suggestions", "env"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+toml = "0.8"
+# Async runtime for server
+tokio = { version = "1.35", features = ["full"] }
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
+# Logging and diagnostics
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+anyhow = "1.0"
+thiserror = { workspace = true }
+# REPL features
+rustyline = { version = "13.0", features = ["derive"] }
+rustyline-derive = "0.10"
+colored = "2.1"
+indicatif = "0.17"
+# Cryptography (using pact-crypto for all crypto operations)
+rand = "0.8"
+base64 = "0.21"
+hex = "0.4"
+# File handling
+glob = "0.3"
+dirs = "5.0"
+tempfile = "3.8"
+# LSP support
+tower-lsp = "0.20"
+# Regex for pattern matching
+regex = "1.10"
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+# HTTP client for testing
+reqwest = { version = "0.11", features = ["json"] }
+[dev-dependencies]
+proptest = { workspace = true }

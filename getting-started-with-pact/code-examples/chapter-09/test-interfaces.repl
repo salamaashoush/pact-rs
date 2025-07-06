@@ -5,14 +5,21 @@
 
 ;; Setup test environment
 (env-data {
-  "coin-admin": ["admin-key"],
-  "storage-admin": ["admin-key"],
-  "test-admin": ["admin-key"],
-  "alice": ["alice-key"],
-  "bob": ["bob-key"]
+  "coin-admin": ["admin"],
+  "storage-admin": ["admin"],
+  "test-admin": ["admin"],
+  "alice": ["alice"],
+  "bob": ["bob"]
 })
 
-(env-keys ["admin-key"])
+(env-keys ["admin"])
+
+;; Define keysets
+(define-keyset "coin-admin" (read-keyset "coin-admin"))
+(define-keyset "storage-admin" (read-keyset "storage-admin"))
+(define-keyset "test-admin" (read-keyset "test-admin"))
+(define-keyset "alice" (read-keyset "alice"))
+(define-keyset "bob" (read-keyset "bob"))
 
 ;; Load interface definitions
 (load "fungible-interface.pact")
@@ -29,9 +36,9 @@
 (use simple-coin)
 
 ;; Create test accounts
-(env-keys ["admin-key"])
-(mint "alice" (read-keyset "alice") 1000.0)
-(mint "bob" (read-keyset "bob") 500.0)
+(env-keys ["admin"])
+(mint "alice" (keyset-ref-guard "alice") 1000.0)
+(mint "bob" (keyset-ref-guard "bob") 500.0)
 
 ;; Test interface compliance
 (expect "Balance function works"
@@ -43,7 +50,8 @@
   (get-supply))
 
 ;; Test transfer with capability
-(env-keys ["alice-key"])
+(env-keys ["alice"])
+(install-capability (simple-coin.TRANSFER "alice" "bob" 100.0))
 (expect "Transfer works with proper authorization"
   "Transfer succeeded"
   (transfer "alice" "bob" 100.0))
@@ -60,8 +68,10 @@
   1500.0
   (get-supply))
 
-;; Test transfer-create
-(transfer-create "alice" "charlie" (read-keyset "alice") 50.0)
+;; Test transfer-create (need to install capability for managed transfers)
+(env-keys ["alice"])
+(install-capability (simple-coin.TRANSFER "alice" "charlie" 50.0))
+(transfer-create "alice" "charlie" (keyset-ref-guard "alice") 50.0)
 
 (expect "Charlie account created with balance"
   50.0
@@ -74,7 +84,7 @@
 ;; Test table storage implementation
 (use table-storage)
 
-(env-keys ["admin-key"])
+(env-keys ["admin"])
 
 ;; Test basic operations
 (expect "Store operation works"
@@ -117,7 +127,7 @@
 ;; Test memory storage
 (use memory-storage)
 
-(env-keys ["admin-key"])
+(env-keys ["admin"])
 
 ;; Test basic operations
 (store "mem-key" { "type": "memory", "value": 123 })
@@ -164,7 +174,8 @@
   })
 
 ;; Test with simple-coin
-(env-keys ["alice-key"])
+(env-keys ["alice"])
+(install-capability (simple-coin.TRANSFER "alice" "bob" 25.0))
 
 (expect "Polymorphic transfer works"
   "Transfer succeeded"
@@ -189,7 +200,7 @@
   (simple-coin.transfer "alice" "bob" 10.0))
 
 ;; Test invalid parameters
-(env-keys ["alice-key"])
+(env-keys ["alice"])
 
 (expect-failure "Transfer fails with zero amount"
   "transfer amount must be positive"

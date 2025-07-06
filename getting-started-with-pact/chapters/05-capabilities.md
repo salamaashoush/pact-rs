@@ -326,7 +326,7 @@ Imagine you want to limit spending from an account:
   
   ;; Helper to check time
   (defun enforce-time:bool (unlock-time:time)
-    (enforce (>= (chain-data 'time) unlock-time) 
+    (enforce (>= (at 'block-time (chain-data)) unlock-time) 
       "Funds are still locked"))
   
   ;; Withdraw function

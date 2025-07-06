@@ -1,0 +1,16 @@
+;; Debug escrow loading
+(begin-tx)
+
+(env-data {
+  "escrow-admin": ["admin"]
+})
+
+(env-keys ["admin"])
+
+(define-keyset "escrow-admin" (read-keyset "escrow-admin"))
+
+(load "basic-escrow.pact")
+
+(commit-tx)
+
+(print "Escrow module loaded successfully")

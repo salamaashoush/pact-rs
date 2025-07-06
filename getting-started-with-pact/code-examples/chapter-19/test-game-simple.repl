@@ -1,0 +1,55 @@
+;; test-game-simple.repl
+;; Simple test for game characters
+
+(begin-tx "Setup")
+
+(env-data {
+  "game-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+(define-keyset 'game-admin (read-keyset "game-admin"))
+
+(load "game-characters-simple.pact")
+
+(commit-tx)
+
+;; Test character creation
+(begin-tx "Test characters")
+
+(env-chain-data { "block-height": 1000 })
+
+(expect "Warrior created"
+  "CHAR-alice-1000"
+  (game-characters.create-character "alice" "Thorin" "warrior"))
+
+(expect "Mage created"
+  "CHAR-bob-1000"
+  (game-characters.create-character "bob" "Gandara" "mage"))
+
+;; Check stats
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Warrior name" "Thorin" (at 'name warrior))
+  (expect "Warrior class" "warrior" (at 'class warrior))
+  (expect "Warrior strength" 15 (at 'strength warrior))
+  (expect "Warrior health" 120 (at 'max-health warrior)))
+
+(let ((mage (game-characters.get-character "CHAR-bob-1000")))
+  (expect "Mage intelligence" 15 (at 'intelligence mage))
+  (expect "Mage mana" 100 (at 'max-mana mage)))
+
+;; Test experience
+(expect "Experience gained"
+  "Gained 50 experience"
+  (game-characters.gain-experience "CHAR-alice-1000" 50))
+
+(expect "Experience updated"
+  50
+  (at 'experience (game-characters.get-character "CHAR-alice-1000")))
+
+(commit-tx)
+
+(print "Simple game tests passed!")

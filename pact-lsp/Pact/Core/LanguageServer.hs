@@ -15,10 +15,9 @@ import Control.Monad.Except
 import Language.LSP.Server
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Lens (uri, textDocument, params, text, position, newName)
-import Language.LSP.Protocol.Types
+import Language.LSP.Protocol.Types hiding (maybeToNull, UInitializeParams(..), _initializationOptions)
 import Language.LSP.VFS
 import Language.LSP.Diagnostics
-import Data.Monoid (Alt(..))
 import Control.Monad.IO.Class
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -43,18 +42,33 @@ import System.Exit
 
 import Control.Monad
 import Control.Monad.State.Strict(put)
-import Control.Monad.Reader (ReaderT, runReaderT, ask)
+import Control.Monad.Reader (runReaderT, ask)
 import Control.Monad.Trans (lift)
 import Control.Concurrent.MVar
 import qualified Data.Map.Strict as M
 import qualified Control.Exception as E
+import qualified Language.LSP.Protocol.Types as LSP
+import Data.Aeson (Value(..))
+import qualified Data.Aeson.KeyMap as KM
 import qualified Pact.Core.Syntax.ParseTree as Lisp
 import qualified Pact.Core.Syntax.Lexer as Lisp
 import qualified Pact.Core.Syntax.Parser as Lisp
 import Pact.Core.IR.Term
 import Pact.Core.Persistence
+import Pact.Core.LanguageServer.Types
 import Pact.Core.LanguageServer.Utils
 import Pact.Core.LanguageServer.Renaming
+import Pact.Core.LanguageServer.Completion
+import Pact.Core.LanguageServer.SignatureHelp
+import qualified Pact.Core.LanguageServer.References as Refs
+import Pact.Core.LanguageServer.Formatting
+import Pact.Core.LanguageServer.DocumentSymbols
+import Pact.Core.LanguageServer.WorkspaceSymbols
+import Pact.Core.LanguageServer.DocumentHighlights
+import Pact.Core.LanguageServer.CodeActions
+import Pact.Core.LanguageServer.SemanticTokens
+import Pact.Core.LanguageServer.InlayHints
+import Pact.Core.LanguageServer.CodeLens
 import Pact.Core.Repl.BuiltinDocs
 import Pact.Core.Repl.BuiltinDocs.Internal
 import Pact.Core.Repl.UserDocs
@@ -65,21 +79,8 @@ import qualified Pact.Core.Repl.Compile as Repl
 import Pact.Core.Interpreter
 import Data.Default
 
-data LSState =
-  LSState
-  { _lsReplState :: M.Map NormalizedUri (ReplState ReplCoreBuiltin)
-  -- ^ Post-Compilation State for each opened file
-  , _lsTopLevel :: M.Map NormalizedUri [EvalTopLevel ReplCoreBuiltin FileLocSpanInfo]
-  -- ^ Top-level terms for each opened file. Used to find the match of a
-  --   particular (cursor) position inside the file.
-  }
-
-makeLenses ''LSState
-
 newLSState :: IO (MVar LSState)
-newLSState = newMVar (LSState mempty mempty)
-
-type LSM = LspT () (ReaderT (MVar LSState) IO)
+newLSState = newMVar (LSState mempty mempty Nothing)
 
 getState :: LSM LSState
 getState = lift ask >>= liftIO . readMVar
@@ -106,22 +107,10 @@ startLSP = do
       , doInitialize = \env _ -> pure (Right env)
       , staticHandlers = const handlers
       , interpretHandler = \env -> Iso (\lsm -> runLSM lsm state env) liftIO
-      , options = defaultOptions { optTextDocumentSync = Just syncOptions }
+      , options = defaultOptions 
+          { optCompletionTriggerCharacters = Just ['.', '(', ' ']
+          }
       }
-
-    -- Note: Syncing options are related to problems highlighted in #83.
-    -- Some IDEs differ in what kind of notification they send, also the
-    -- `TextDocumentSyncOptions` control the frequency (incremental, full)
-    -- the server is being informed.
-    syncOptions = TextDocumentSyncOptions
-                  (Just True) -- send open/close notification
-                  (Just TextDocumentSyncKind_Incremental)
-                  -- Documents are synce by sending the full content once
-                  -- a file is being opened. Later updates are send
-                  -- incrementally to the server.
-                  (Just False) -- dont send `willSave` notification.
-                  (Just False) -- dont send `willSaveWaitUntil` request.
-                  (Just $ InR $ SaveOptions $ Just True) -- Include content on save.
 
     runLSM lsm state cfg = runReaderT (runLspT cfg lsm) state
 
@@ -133,29 +122,78 @@ startLSP = do
       , documentDidCloseHandler
       , documentDidSaveHandler
       , workspaceDidChangeConfigurationHandler
-      -- request handler
+      -- request handlers
       , documentHoverRequestHandler
       , documentDefinitionRequestHandler
       , documentRenameRequestHandler
+      , completionHandler
+      , completionItemResolveHandler
+      , signatureHelpHandler
+      , Refs.findReferencesHandler
+      , documentFormattingHandler
+      , documentRangeFormattingHandler
+      , documentSymbolHandler
+      , workspaceSymbolHandler
+      , documentHighlightHandler
+      , codeActionHandler
+      , semanticTokensFullHandler
+      , semanticTokensRangeHandler
+      , inlayHintHandler
+      , codeLensHandler
       ]
 
 debug :: MonadIO m => Text -> m ()
 debug msg = liftIO $ T.hPutStrLn stderr $ "[pact-lsp] " <> msg
 
+-- | Handle pact configuration from workspace
+handlePactConfiguration :: Value -> LSM ()
+handlePactConfiguration config = do
+  debug $ "Processing pact configuration: " <> T.pack (show config)
+  case config of
+    Object obj -> case KM.lookup "formatting" obj of
+      Just formattingConfig -> do
+        debug $ "Found formatting configuration: " <> T.pack (show formattingConfig)
+        modifyState (lsFormattingConfig .~ Just formattingConfig)
+      Nothing -> debug "No formatting configuration in pact settings"
+    _ -> debug "Invalid pact configuration format"
+
+
 -- Handler executed after the LSP client initiates a connection to our server.
 initializedHandler :: Handlers LSM
-initializedHandler = notificationHandler SMethod_Initialized $ \_ -> pure ()
+initializedHandler = notificationHandler SMethod_Initialized $ \_ -> do
+  debug "LSP initialized, requesting initial configuration"
+  -- Request initial workspace configuration for pact settings
+  void $ sendRequest SMethod_WorkspaceConfiguration 
+    (ConfigurationParams [ConfigurationItem Nothing (Just "pact")]) $ \case
+      Right configs -> case configs of
+        [config] -> handlePactConfiguration config
+        _ -> debug $ "Unexpected initial configuration response: " <> T.pack (show (length configs)) <> " items"
+      Left err -> debug $ "Initial configuration request failed: " <> T.pack (show err)
 
 workspaceDidChangeConfigurationHandler :: Handlers LSM
 workspaceDidChangeConfigurationHandler
-  = notificationHandler SMethod_WorkspaceDidChangeConfiguration $ \_ -> pure ()
+  = notificationHandler SMethod_WorkspaceDidChangeConfiguration $ \_ -> do
+      debug "Configuration changed, requesting updated settings"
+      -- Request workspace configuration for pact settings
+      void $ sendRequest SMethod_WorkspaceConfiguration 
+        (ConfigurationParams [ConfigurationItem Nothing (Just "pact")]) $ \case
+          Right configs -> case configs of
+            [config] -> handlePactConfiguration config
+            _ -> debug $ "Unexpected configuration response: " <> T.pack (show (length configs)) <> " items"
+          Left err -> debug $ "Configuration request failed: " <> T.pack (show err)
 
 documentDidOpenHandler :: Handlers LSM
 documentDidOpenHandler = notificationHandler SMethod_TextDocumentDidOpen $ \msg -> do
   let nuri = msg ^. params . textDocument . uri . to toNormalizedUri
       content = msg ^. params . textDocument . text
+      uri' = msg ^. params . textDocument . uri
 
-  debug $ "open file " <> renderText nuri
+  debug $ "documentDidOpenHandler called"
+  debug $ "  URI: " <> T.pack (show uri')
+  debug $ "  Normalized URI: " <> renderText nuri
+  debug $ "  Content length: " <> T.pack (show (T.length content))
+  debug $ "  First 100 chars: " <> T.take 100 content
+  
   sendDiagnostics nuri (Just 0) content
 
 documentDidChangeHandler :: Handlers LSM
@@ -198,9 +236,12 @@ documentDidSaveHandler = notificationHandler SMethod_TextDocumentDidSave $ \msg 
 sendDiagnostics :: NormalizedUri -> Maybe Int32 -> Text -> LSM ()
 sendDiagnostics nuri mv content = liftIO (setupAndProcessFile nuri content) >>= \case
   Left err -> do
+    -- Log the error for debugging
+    debug $ "setupAndProcessFile error: " <> renderText err
     -- We only publish a single diagnostic
     publishDiagnostics 1  nuri mv $ partitionBySource [pactErrorToDiagnostic err]
   Right (st, tl) -> do
+    debug $ "setupAndProcessFile success: " <> sshow (M.size tl) <> " top-level maps"
     modifyState ((lsReplState %~ M.insert nuri st) . (lsTopLevel %~ M.unionWith (<>) tl))
 
     -- We emit an empty set of diagnostics
@@ -237,9 +278,8 @@ setupAndProcessFile
 setupAndProcessFile nuri content = do
   pdb <- mockPactDb serialisePact_repl_fileLocSpanInfo
   let
-    builtinMap = if isReplScript fp
-                 then replBuiltinMap
-                 else RBuiltinWrap <$> coreBuiltinMap
+    -- Use replBuiltinMap for LSP to support all features
+    builtinMap = replBuiltinMap
 
   ee <- defaultEvalEnv pdb builtinMap
   let
@@ -269,21 +309,11 @@ setupAndProcessFile nuri content = do
   pure $ (st,) <$> res
   where
     fp = fromMaybe "<local>" $ uriToFilePath (fromNormalizedUri nuri)
-    isReplScript :: FilePath -> Bool
-    isReplScript = (==) ".repl" . takeExtension
 
 spanInfoToRange :: SpanInfo -> Range
 spanInfoToRange (SpanInfo sl sc el ec) = mkRange
   (fromIntegral sl)  (fromIntegral sc)
   (fromIntegral el)  (fromIntegral ec)
-
-
-getMatch
-  :: HasSpanInfo i
-  => Position
-  -> [EvalTopLevel ReplCoreBuiltin i]
-  -> Maybe (PositionMatch ReplCoreBuiltin i)
-getMatch pos tl = getAlt (foldMap (Alt . topLevelTermAt pos) tl)
 
 documentDefinitionRequestHandler :: Handlers LSM
 documentDefinitionRequestHandler = requestHandler SMethod_TextDocumentDefinition $ \req resp ->
@@ -305,7 +335,7 @@ documentDefinitionRequestHandler = requestHandler SMethod_TextDocumentDefinition
     let loc = Location uri' . spanInfoToRange . view spanInfo
     case loc <$> tlDefSpan of
       Just x -> resp (Right $ InL $ Definition (InL x))
-      Nothing -> resp (Right $ InR $ InR Null)
+      Nothing -> resp (Right $ InR $ InR LSP.Null)
 
 
 documentHoverRequestHandler :: Handlers LSM
@@ -313,8 +343,21 @@ documentHoverRequestHandler = requestHandler SMethod_TextDocumentHover $ \req re
   getState >>= \st -> do
     let nuri = req ^. params . textDocument . uri . to toNormalizedUri
         pos = req ^. params . position
+        uri' = req ^. params . textDocument . uri
 
-    case getMatch pos =<< view (lsTopLevel . at nuri) st of
+    debug $ "documentHoverRequestHandler called"
+    debug $ "  URI: " <> T.pack (show uri')
+    debug $ "  Position: " <> T.pack (show pos)
+    
+    -- Check what's in the state
+    let topLevels = view (lsTopLevel . at nuri) st
+    debug $ "  TopLevels for this URI: " <> maybe "Nothing" (\tls -> T.pack (show (length tls)) <> " items") topLevels
+    
+    -- Check all URIs in state
+    let allUris = M.keys (view lsTopLevel st)
+    debug $ "  All URIs in state: " <> T.pack (show (length allUris)) <> " - " <> T.intercalate ", " (map renderText allUris)
+    
+    case getMatch pos =<< topLevels of
       Just tlm -> case tlm of
         TermMatch (Builtin builtin i) -> let
                 docs = fromMaybe (MarkdownDoc "*No docs available*")
@@ -325,16 +368,20 @@ documentHoverRequestHandler = requestHandler SMethod_TextDocumentHover $ \req re
                 hover = Hover (InL mc) (Just range)
                 in resp (Right (InL hover))
 
-        TermMatch (Var (Name n (NTopLevel mn _)) _) ->
+        TermMatch (Var (Name n (NTopLevel mn _)) i) ->
           -- Access user-annotated documentation using the @doc command.
           let qn = QualifiedName n mn
-              toHover d = Hover (InL $ MarkupContent MarkupKind_Markdown (_markdownDoc d)) Nothing
+              range = spanInfoToRange (view spanInfo i)
+              -- Include range to help with hyphenated identifiers
+              toHover d = Hover (InL $ MarkupContent MarkupKind_Markdown (_markdownDoc d)) (Just range)
               doc = MarkdownDoc <$> preview (lsReplState . at nuri . _Just . replUserDocs . ix qn) st
-          in resp (Right (maybeToNull (toHover <$> doc)))
-        _ ->  resp (Right (InR Null))
+              -- Provide a default hover with just the identifier name and range
+              defaultHover = Hover (InL $ MarkupContent MarkupKind_Markdown $ "`" <> n <> "`") (Just range)
+          in resp (Right (InL (fromMaybe defaultHover (toHover <$> doc))))
+        _ ->  resp (Right (InR LSP.Null))
       Nothing -> do
         debug "documentHover: could not find term on position"
-        resp (Right (InR Null))
+        resp (Right (InR LSP.Null))
 
 documentRenameRequestHandler :: Handlers LSM
 documentRenameRequestHandler = requestHandler SMethod_TextDocumentRename $ \req resp ->
@@ -350,12 +397,12 @@ documentRenameRequestHandler = requestHandler SMethod_TextDocumentRename $ \req 
     case getRenameSpanInfo tls <$> getMatch pos tls of
       Nothing -> do
         debug "documentRenameRequestHandler: could not find term at position"
-        resp (Right (InR Null))
+        resp (Right (InR LSP.Null))
       Just changePos -> do
         debug $ "documentRenameRequestHandler: got " <> sshow (length changePos) <> " changes"
         let changes = InL . toTextEdit . spanInfoToRange <$> changePos
             te = TextDocumentEdit
-                 (OptionalVersionedTextDocumentIdentifier uri' $ InR Null)
+                 (OptionalVersionedTextDocumentIdentifier uri' $ InR LSP.Null)
                  changes
             we = WorkspaceEdit Nothing (Just [InL te]) Nothing
         resp (Right (InL we))
@@ -371,7 +418,7 @@ doLoad fp reset = do
     ee <- liftIO (defaultEvalEnv pactdb replBuiltinMap)
     put def
     replEvalEnv .== ee
-  when (Repl.isPactFile fp) $ esLoaded . loToplevel .= mempty
+  when (Repl.isPactFile fp) $ esLoaded . loToplevel Control.Lens..= mempty
   _ <- case res of
     Left (_e:: E.IOException) ->
       throwExecutionError def $ EvalError $ "File not found: " <> T.pack fp
@@ -412,7 +459,9 @@ processFile replEnv nuri (SourceCode f source) = do
       constEvaled <- ConstEval.evalTLConsts replEnv ds
       tlFinal <- MHash.hashTopLevel constEvaled
       let act = M.singleton nuri [ds] <$ evalTopLevel replEnv (RawCode mempty) tlFinal deps
-      catchError act (const (pure mempty))
+      -- Return the desugared top-level even if evaluation fails
+      -- This allows completions and symbols to work on code with errors
+      catchError act (\_ -> pure (M.singleton nuri [ds]))
     pipe _ = pure mempty
 
 

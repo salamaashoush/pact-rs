@@ -74,7 +74,7 @@ data DefPactExec = DefPactExec
       (enforce (> amount 0.0) "Amount must be positive")
       (enforce (> timeout-hours 0) "Timeout must be positive")
       
-      (let ((timeout-time (add-time (chain-data 'time) (hours timeout-hours))))
+      (let ((timeout-time (add-time (at 'block-time (chain-data)) (hours timeout-hours))))
         ;; Transfer funds to escrow
         (coin.transfer buyer escrow-id amount)
         
@@ -83,7 +83,7 @@ data DefPactExec = DefPactExec
           "buyer": buyer,
           "seller": seller,
           "amount": amount,
-          "created": (chain-data 'time),
+          "created": (at 'block-time (chain-data)),
           "timeout": timeout-time,
           "status": "active"
         })
@@ -105,7 +105,7 @@ data DefPactExec = DefPactExec
         "amount" := amt,
         "buyer" := buyer-account 
       }
-        (enforce (>= (chain-data 'time) timeout-time) "Timeout not reached")
+        (enforce (>= (at 'block-time (chain-data)) timeout-time) "Timeout not reached")
         (coin.transfer escrow-id buyer-account amt)
         (update escrows escrow-id { "status": "refunded" })
         (format "Escrow {} refunded to buyer" [escrow-id]))))
@@ -141,7 +141,7 @@ data DefPactExec = DefPactExec
         "origin": origin,
         "destination": destination,
         "carrier": carrier,
-        "created": (chain-data 'time),
+        "created": (at 'block-time (chain-data)),
         "current-location": origin,
         "status": "created",
         "checkpoints": []
@@ -157,7 +157,7 @@ data DefPactExec = DefPactExec
         (let ((checkpoint {
           "location": pickup-location,
           "action": "pickup",
-          "timestamp": (chain-data 'time),
+          "timestamp": (at 'block-time (chain-data)),
           "carrier": carrier
         })))
         (update shipments shipment-id {
@@ -173,7 +173,7 @@ data DefPactExec = DefPactExec
             (checkpoint {
               "location": new-location,
               "action": "transit",
-              "timestamp": (chain-data 'time),
+              "timestamp": (at 'block-time (chain-data)),
               "carrier": carrier
             }))
         (with-read shipments shipment-id { "checkpoints" := checkpoints }
@@ -193,7 +193,7 @@ data DefPactExec = DefPactExec
         (let ((checkpoint {
           "location": dest,
           "action": "delivered",
-          "timestamp": (chain-data 'time),
+          "timestamp": (at 'block-time (chain-data)),
           "carrier": carrier
         })))
         (update shipments shipment-id {
@@ -217,11 +217,11 @@ data DefPactExec = DefPactExec
 (defpact simple-process (id:string)
   ;; Basic step - no rollback capability
   (step
-    (insert process-log id { "status": "started", "time": (chain-data 'time) })
+    (insert process-log id { "status": "started", "time": (at 'block-time (chain-data)) })
     "Process started")
   
   (step
-    (update process-log id { "status": "completed", "time": (chain-data 'time) })
+    (update process-log id { "status": "completed", "time": (at 'block-time (chain-data)) })
     "Process completed"))
 ```
 
@@ -233,7 +233,7 @@ data DefPactExec = DefPactExec
   (step-with-rollback
     ;; Main execution
     (coin.transfer "source" "temp" amount)
-    (insert temp-holdings id { "amount": amount, "time": (chain-data 'time) })
+    (insert temp-holdings id { "amount": amount, "time": (at 'block-time (chain-data)) })
     "Funds moved to temporary holding"
     
     ;; Rollback handler
@@ -303,7 +303,7 @@ Cross-chain pacts use `yield` and `resume` for chain-to-chain communication:
           "amount": amt,
           "source-chain": source,
           "target-chain": (chain-data 'chain-id),
-          "completed": (chain-data 'time)
+          "completed": (at 'block-time (chain-data))
         })
         
         (format "Minted {} tokens from cross-chain transfer" [amt]))))
@@ -326,7 +326,7 @@ Cross-chain pacts use `yield` and `resume` for chain-to-chain communication:
         "seller": seller,
         "amount": amount,
         "target-chain": target-chain,
-        "locked": (chain-data 'time)
+        "locked": (at 'block-time (chain-data))
       })
       
       ;; Yield to target chain with SPV data
@@ -404,7 +404,7 @@ From the Haskell implementation, pact execution follows this pattern:
       ;; Log the reason
       (insert rollback-log pact-id {
         "reason": reason,
-        "timestamp": (chain-data 'time),
+        "timestamp": (at 'block-time (chain-data)),
         "admin": (tx-sender)
       })))
 )
@@ -452,10 +452,10 @@ From the Haskell implementation, pact execution follows this pattern:
     
     ;; Step 0: Open auction
     (step
-      (let ((end-time (add-time (chain-data 'time) (seconds duration))))
+      (let ((end-time (add-time (at 'block-time (chain-data)) (seconds duration))))
         (insert auctions auction-id {
           "item": item,
-          "start-time": (chain-data 'time),
+          "start-time": (at 'block-time (chain-data)),
           "end-time": end-time,
           "status": "open",
           "highest-bid": 0.0,
@@ -469,7 +469,7 @@ From the Haskell implementation, pact execution follows this pattern:
         "end-time" := end-time,
         "highest-bidder" := winner 
       }
-        (enforce (>= (chain-data 'time) end-time) "Auction still active")
+        (enforce (>= (at 'block-time (chain-data)) end-time) "Auction still active")
         (update auctions auction-id { "status": "closed" })
         (if (!= winner "")
             (format "Auction won by {}" [winner])
@@ -563,7 +563,7 @@ From the Haskell implementation, pact execution follows this pattern:
 (continue-pact (pact-id) false)
 
 ;; Fast forward time to trigger timeout
-(env-time (add-time (chain-data 'time) (hours 2)))
+(env-time (add-time (at 'block-time (chain-data)) (hours 2)))
 
 ;; Execute rollback
 (continue-pact (pact-id) true)

@@ -1,0 +1,66 @@
+; PactZombies Lesson 1 - Testing Your First Zombie
+; =================================================
+
+; Load environment setup
+(env-data {"zombies-admin": {"keys": ["admin-key"]}})
+(env-keys ["admin-key"])
+
+; Load the zombie factory contract
+(begin-tx)
+(load "zombie-factory.pact")
+(create-table zombies-table)
+(commit-tx)
+
+; Test 1: Create our first zombie
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "alice-key", "caps": []}])
+(env-data {"sender": "alice"})
+(expect "Create first zombie" 
+  "Zombie Bob created with DNA: " 
+  (take 25 (create-zombie "Zombie Bob")))
+(commit-tx)
+
+; Test 2: Create another zombie with different owner
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "bob-key", "caps": []}])
+(env-data {"sender": "bob"})
+(create-zombie "Zombie Alice")
+(commit-tx)
+
+; Test 3: Create a third zombie
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "alice-key", "caps": []}])
+(env-data {"sender": "alice"})
+(create-zombie "Zombie Charlie")
+(commit-tx)
+
+; Test 4: Check all zombies in the table
+(begin-tx)
+(use zombies)
+(expect "Should have 3 zombies" 3 (length (select zombies-table (constantly true))))
+
+; Display all zombies
+(print "All zombies:")
+(select zombies-table (constantly true))
+(commit-tx)
+
+; Test 5: Verify zombie properties
+(begin-tx)
+(use zombies)
+(let ((all-zombies (select zombies-table (constantly true))))
+  (expect "At least one zombie owned by alice" 
+    true
+    (> (length (filter (lambda (z) (= "alice" (at "owner" z))) all-zombies)) 0))
+  (expect "All zombies start at level 1" 
+    true
+    (fold (lambda (z acc) (and acc (= 1 (at "level" z)))) true all-zombies)))
+(commit-tx)
+
+(print "")
+(print "🎉 Congratulations! You've successfully created your first zombies!")
+(print "Each zombie has unique DNA generated from their name and timestamp.")
+(print "")
+(print "Challenge: Try modifying the contract to add zombie types and random stats!")

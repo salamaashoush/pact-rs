@@ -1,43 +1,8 @@
 ;; namespace-setup.pact
 ;; Comprehensive namespace setup and organization examples
 
-;; Define governance keysets
-(env-data {
-  "protocol-admin": ["admin-key-1", "admin-key-2"],
-  "protocol-users": ["user-key-1", "user-key-2", "user-key-3", "admin-key-1"],
-  "defi-admin": ["defi-admin-key"],
-  "defi-users": ["defi-user-1", "defi-user-2"],
-  "dex-admin": ["dex-admin-key"],
-  "dex-users": ["dex-user-1", "dex-user-2"]
-})
-
-;; Create keysets for namespace governance
-(define-keyset 'protocol-admin (read-keyset "protocol-admin"))
-(define-keyset 'protocol-users (read-keyset "protocol-users"))
-(define-keyset 'defi-admin (read-keyset "defi-admin"))
-(define-keyset 'defi-users (read-keyset "defi-users"))
-(define-keyset 'dex-admin (read-keyset "dex-admin"))
-(define-keyset 'dex-users (read-keyset "dex-users"))
-
-;; Root protocol namespace
-(define-namespace 'kadena-protocol
-  (keyset-ref-guard 'protocol-users)  ;; Users can deploy modules
-  (keyset-ref-guard 'protocol-admin))  ;; Admins can modify namespace
-
-;; DeFi sub-protocol namespace
-(define-namespace 'kadena-defi
-  (keyset-ref-guard 'defi-users)
-  (keyset-ref-guard 'defi-admin))
-
-;; DEX sub-protocol namespace  
-(define-namespace 'kadena-dex
-  (keyset-ref-guard 'dex-users)
-  (keyset-ref-guard 'dex-admin))
-
-;; Utility namespace for shared components
-(define-namespace 'protocol-utils
-  (keyset-ref-guard 'protocol-users)
-  (keyset-ref-guard 'protocol-admin))
+;; Note: This file contains module definitions that should be loaded
+;; after proper namespace and keyset setup in the test environment
 
 ;; =============================================================================
 ;; INFRASTRUCTURE LAYER - Shared utilities and core components
@@ -51,82 +16,74 @@
   (defcap GOVERNANCE ()
     (enforce-keyset 'protocol-admin))
   
-  ;; Constants
-  (defconst PRECISION:integer 18
-    @doc "Standard precision for calculations")
+  ;; Basic math utilities
+  (defun add-decimals:decimal (a:decimal b:decimal)
+    @doc "Safe decimal addition"
+    (+ a b))
   
-  (defconst MAX_DECIMAL:decimal 999999999999.999999999999999999
-    @doc "Maximum safe decimal value")
-  
-  ;; Mathematical functions
-  (defun safe-add:decimal (a:decimal b:decimal)
-    @doc "Safe addition with overflow protection"
-    (let ((result (+ a b)))
-      (enforce (<= result MAX_DECIMAL) "Addition overflow")
-      result))
-  
-  (defun safe-subtract:decimal (a:decimal b:decimal)
-    @doc "Safe subtraction with underflow protection"
-    (enforce (>= a b) "Subtraction underflow")
+  (defun sub-decimals:decimal (a:decimal b:decimal)
+    @doc "Safe decimal subtraction"
     (- a b))
   
-  (defun safe-multiply:decimal (a:decimal b:decimal)
-    @doc "Safe multiplication with overflow protection"
-    (let ((result (* a b)))
-      (enforce (<= result MAX_DECIMAL) "Multiplication overflow")
-      result))
+  (defun mul-decimals:decimal (a:decimal b:decimal)
+    @doc "Safe decimal multiplication"
+    (* a b))
   
-  (defun safe-divide:decimal (a:decimal b:decimal)
-    @doc "Safe division with zero check"
+  (defun div-decimals:decimal (a:decimal b:decimal)
+    @doc "Safe decimal division"
     (enforce (!= b 0.0) "Division by zero")
     (/ a b))
   
-  (defun calculate-percentage:decimal (value:decimal percentage:decimal)
-    @doc "Calculate percentage of value"
-    (safe-multiply value (safe-divide percentage 100.0)))
+  ;; Percentage calculations
+  (defun calculate-percentage:decimal (amount:decimal percentage:decimal)
+    @doc "Calculate percentage of amount"
+    (enforce (>= percentage 0.0) "Percentage must be non-negative")
+    (enforce (<= percentage 100.0) "Percentage cannot exceed 100")
+    (* amount (/ percentage 100.0)))
   
+  ;; Min/max functions
+  (defun min:decimal (a:decimal b:decimal)
+    @doc "Return minimum of two decimals"
+    (if (< a b) a b))
+  
+  (defun max:decimal (a:decimal b:decimal)
+    @doc "Return maximum of two decimals"
+    (if (> a b) a b))
+  
+  ;; Compound interest calculation
   (defun compound-interest:decimal (principal:decimal rate:decimal periods:integer)
     @doc "Calculate compound interest"
-    (let ((rate-plus-one (safe-add 1.0 rate)))
-      (safe-multiply principal (^ rate-plus-one periods))))
-  
-  ;; Precision utilities
-  (defun round-to-precision:decimal (value:decimal precision:integer)
-    @doc "Round value to specified precision"
-    (round value precision))
-  
-  (defun format-currency:string (value:decimal)
-    @doc "Format decimal as currency string"
-    (format "{}" [(round value 2)]))
+    (enforce (> principal 0.0) "Principal must be positive")
+    (enforce (> rate 0.0) "Rate must be positive")
+    (enforce (> periods 0) "Periods must be positive")
+    (* principal (^ (+ 1.0 rate) periods)))
 )
 
 (module validation GOVERNANCE
-  @doc "Input validation and sanitization"
+  @doc "Input validation and sanitization utilities"
   
   (defcap GOVERNANCE ()
     (enforce-keyset 'protocol-admin))
   
-  ;; Validation functions
-  (defun validate-positive:bool (value:decimal description:string)
-    @doc "Validate value is positive"
-    (enforce (> value 0.0) (format "{} must be positive" [description]))
+  ;; String validation
+  (defun validate-account-id:bool (account:string)
+    @doc "Validate account ID format"
+    (let ((account-length (length account)))
+      (enforce (>= account-length 3) "Account ID too short")
+      (enforce (<= account-length 64) "Account ID too long")
+      (enforce (is-charset CHARSET_LATIN1 account) "Invalid characters in account ID"))
     true)
   
-  (defun validate-non-zero:bool (value:decimal description:string)
-    @doc "Validate value is not zero"
-    (enforce (!= value 0.0) (format "{} cannot be zero" [description]))
+  (defun validate-email:bool (email:string)
+    @doc "Basic email validation"
+    (enforce (contains "@" email) "Invalid email format")
+    (enforce (> (length email) 5) "Email too short")
     true)
   
-  (defun validate-account:bool (account:string)
-    @doc "Validate account string"
-    (enforce (!= account "") "Account cannot be empty")
-    (enforce (<= (length account) 256) "Account name too long")
-    true)
-  
-  (defun validate-percentage:bool (percentage:decimal)
-    @doc "Validate percentage is between 0 and 100"
-    (enforce (and (>= percentage 0.0) (<= percentage 100.0)) 
-             "Percentage must be between 0 and 100")
+  ;; Numeric validation
+  (defun validate-positive-amount:bool (amount:decimal)
+    @doc "Validate amount is positive"
+    (enforce (> amount 0.0) "Amount must be positive")
     true)
   
   (defun validate-amount-precision:bool (amount:decimal max-precision:integer)
@@ -146,7 +103,7 @@
   (defschema event-log
     @doc "Standard event log entry"
     event-type:string
-    module:string
+    module-name:string
     function:string
     data:object
     user:string
@@ -162,114 +119,80 @@
   (defconst EVENT_TYPE_ADMIN:string "ADMIN")
   (defconst EVENT_TYPE_AUDIT:string "AUDIT")
   
-  ;; Logging functions
-  (defun log-event:string (event-type:string module:string function:string data:object)
-    @doc "Log protocol event"
-    (let ((event-id (hash [event-type module function (chain-data 'time)])))
-      (insert event-logs event-id {
-        "event-type": event-type,
-        "module": module,
-        "function": function,
-        "data": data,
-        "user": (tx-sender),
-        "timestamp": (chain-data 'time),
-        "block-height": (chain-data 'block-height),
-        "tx-hash": (hash (chain-data))
-      })
-      event-id))
+  ;; Event logging functions
+  (defun log-event:string (event-type:string module-name:string function:string data:object)
+    @doc "Log system event"
+    (insert event-logs (format "{}_{}" [event-type (int-to-str 10 (at 'block-time (chain-data)))]) {
+      "event-type": event-type,
+      "module-name": module-name,
+      "function": function,
+      "data": data,
+      "user": (tx-sender),
+      "timestamp": (at 'block-time (chain-data)),
+      "block-height": (chain-data 'height),
+      "tx-hash": (format "{}" [(chain-data 'block-hash)])
+    })
+    (format "Event logged: {} in {}.{}" [event-type module-name function]))
   
-  (defun log-transaction:string (module:string function:string data:object)
-    @doc "Log transaction event"
-    (log-event EVENT_TYPE_TRANSACTION module function data))
-  
-  (defun log-error:string (module:string function:string error:string data:object)
-    @doc "Log error event"
-    (log-event EVENT_TYPE_ERROR module function 
-               (+ data { "error": error })))
-  
-  (defun log-admin-action:string (action:string data:object)
-    @doc "Log administrative action"
-    (log-event EVENT_TYPE_ADMIN "admin" action data))
-  
-  ;; Query functions
-  (defun get-events-by-type:[object] (event-type:string)
+  (defun get-events:[object] (event-type:string)
     @doc "Get events by type"
     (select event-logs (where 'event-type (= event-type))))
   
-  (defun get-events-by-module:[object] (module:string)
-    @doc "Get events by module"
-    (select event-logs (where 'module (= module))))
-  
-  (defun get-events-by-user:[object] (user:string)
-    @doc "Get events by user"
-    (select event-logs (where 'user (= user))))
+  (defun get-recent-events:[object] (count:integer)
+    @doc "Get recent events"
+    (take count (sort (keys event-logs) (lambda (a b) (> a b)))))
 )
 
 ;; =============================================================================
-;; DEFI PROTOCOL MODULES
+;; APPLICATION LAYER - Business logic modules
 ;; =============================================================================
 
-(namespace 'kadena-defi)
+(namespace 'defi-apps)
 
 (module token-registry GOVERNANCE
-  @doc "Registry for DeFi protocol tokens"
+  @doc "Token registration and metadata management"
   
   (defcap GOVERNANCE ()
     (enforce-keyset 'defi-admin))
   
-  ;; Import utilities
-  (use protocol-utils.validation)
-  (use protocol-utils.events)
-  
-  ;; Token information schema
+  ;; Token metadata schema
   (defschema token-info
-    @doc "Token registry information"
+    @doc "Token metadata and information"
     symbol:string
     name:string
     decimals:integer
+    total-supply:decimal
     contract:module{fungible-v2}
     verified:bool
-    listed:time
-    total-supply:decimal
-    circulating-supply:decimal
+    created:time
+    creator:string
     metadata:object)
   
   (deftable tokens:{token-info})
   
-  ;; Registry functions
+  ;; Token registration
   (defun register-token:string (symbol:string name:string decimals:integer 
-                               contract:module{fungible-v2} metadata:object)
-    @doc "Register new token in DeFi protocol"
-    (validate-account symbol)
-    (validate-account name)
-    (enforce (and (>= decimals 0) (<= decimals 18)) "Invalid decimals")
-    
+                                total-supply:decimal contract:module{fungible-v2}
+                                metadata:object)
+    @doc "Register new token"
     (with-capability (GOVERNANCE)
       (insert tokens symbol {
         "symbol": symbol,
         "name": name,
         "decimals": decimals,
+        "total-supply": total-supply,
         "contract": contract,
         "verified": false,
-        "listed": (chain-data 'time),
-        "total-supply": (contract::get-supply),
-        "circulating-supply": (contract::get-supply),
+        "created": (at 'block-time (chain-data)),
+        "creator": (tx-sender),
         "metadata": metadata
       })
-      
-      (log-admin-action "TOKEN_REGISTERED" {
-        "symbol": symbol,
-        "name": name,
-        "contract": (format "{}" [contract])
-      })
-      
       (format "Token {} registered successfully" [symbol])))
   
   (defun verify-token:string (symbol:string)
-    @doc "Mark token as verified"
+    @doc "Verify token (admin only)"
     (with-capability (GOVERNANCE)
       (update tokens symbol { "verified": true })
-      (log-admin-action "TOKEN_VERIFIED" { "symbol": symbol })
       (format "Token {} verified" [symbol])))
   
   (defun get-token:object (symbol:string)
@@ -279,16 +202,6 @@
   (defun list-verified-tokens:[object] ()
     @doc "List all verified tokens"
     (select tokens (where 'verified (= true))))
-  
-  (defun update-token-supply:string (symbol:string)
-    @doc "Update token supply information"
-    (with-read tokens symbol { "contract" := contract }
-      (let ((current-supply (contract::get-supply)))
-        (update tokens symbol { 
-          "total-supply": current-supply,
-          "circulating-supply": current-supply
-        })
-        (format "Supply updated for {}" [symbol]))))
 )
 
 (module lending-core GOVERNANCE
@@ -297,16 +210,14 @@
   (defcap GOVERNANCE ()
     (enforce-keyset 'defi-admin))
   
-  ;; Import dependencies
+  ;; Import utilities from other namespaces
   (use protocol-utils.math)
   (use protocol-utils.validation)
-  (use protocol-utils.events)
-  (use token-registry)
   
   ;; Lending pool schema
   (defschema lending-pool
     @doc "Lending pool information"
-    asset:string
+    token:string
     total-supplied:decimal
     total-borrowed:decimal
     supply-rate:decimal
@@ -315,269 +226,208 @@
     reserve-factor:decimal
     last-update:time)
   
-  (deftable lending-pools:{lending-pool})
+  (deftable pools:{lending-pool})
   
-  ;; User position schema
+  ;; User position schema  
   (defschema user-position
-    @doc "User lending/borrowing position"
+    @doc "User lending position"
     user:string
-    asset:string
+    token:string
     supplied:decimal
     borrowed:decimal
     collateral:decimal
-    last-update:time)
+    last-action:time)
   
-  (deftable user-positions:{user-position})
+  (deftable positions:{user-position})
   
   ;; Interest rate model
-  (defun calculate-utilization:decimal (total-supplied:decimal total-borrowed:decimal)
+  (defun calculate-utilization:decimal (total-borrowed:decimal total-supplied:decimal)
     @doc "Calculate pool utilization rate"
     (if (= total-supplied 0.0)
         0.0
-        (safe-divide total-borrowed total-supplied)))
+        (div-decimals total-borrowed total-supplied)))
   
-  (defun calculate-borrow-rate:decimal (utilization:decimal)
-    @doc "Calculate borrowing interest rate based on utilization"
-    (let ((base-rate 0.02)  ;; 2% base rate
-          (slope1 0.10)     ;; 10% slope for low utilization
-          (slope2 0.50)     ;; 50% slope for high utilization
-          (optimal-util 0.80)) ;; 80% optimal utilization
-      (if (<= utilization optimal-util)
-          (safe-add base-rate (safe-multiply utilization slope1))
-          (safe-add base-rate 
-                   (safe-add (safe-multiply optimal-util slope1)
-                            (safe-multiply (safe-subtract utilization optimal-util) slope2))))))
-  
-  (defun calculate-supply-rate:decimal (borrow-rate:decimal utilization:decimal reserve-factor:decimal)
+  (defun calculate-supply-rate:decimal (utilization:decimal borrow-rate:decimal reserve-factor:decimal)
     @doc "Calculate supply interest rate"
-    (safe-multiply borrow-rate 
-                  (safe-multiply utilization (safe-subtract 1.0 reserve-factor))))
+    (mul-decimals utilization (sub-decimals borrow-rate (mul-decimals borrow-rate reserve-factor))))
   
-  ;; Core lending functions
-  (defun create-pool:string (asset:string reserve-factor:decimal)
+  ;; Pool management
+  (defun create-pool:string (token:string initial-borrow-rate:decimal reserve-factor:decimal)
     @doc "Create new lending pool"
-    (validate-account asset)
-    (validate-percentage (safe-multiply reserve-factor 100.0))
-    
     (with-capability (GOVERNANCE)
-      ;; Verify asset is registered
-      (get-token asset)  ;; Will fail if not found
-      
-      (insert lending-pools asset {
-        "asset": asset,
+      (validate-positive-amount initial-borrow-rate)
+      (insert pools token {
+        "token": token,
         "total-supplied": 0.0,
         "total-borrowed": 0.0,
         "supply-rate": 0.0,
-        "borrow-rate": 0.0,
+        "borrow-rate": initial-borrow-rate,
         "utilization-rate": 0.0,
         "reserve-factor": reserve-factor,
-        "last-update": (chain-data 'time)
+        "last-update": (at 'block-time (chain-data))
       })
-      
-      (log-admin-action "POOL_CREATED" { "asset": asset })
-      (format "Lending pool created for {}" [asset])))
+      (format "Lending pool created for token: {}" [token])))
   
-  (defun supply:string (user:string asset:string amount:decimal)
-    @doc "Supply assets to lending pool"
-    (validate-account user)
-    (validate-account asset)
-    (validate-positive amount "Supply amount")
-    
-    ;; Update pool state
-    (with-read lending-pools asset {
+  (defun update-rates:string (token:string)
+    @doc "Update pool interest rates"
+    (with-read pools token {
       "total-supplied" := supplied,
-      "total-borrowed" := borrowed
+      "total-borrowed" := borrowed,
+      "borrow-rate" := borrow-rate,
+      "reserve-factor" := reserve-factor
     }
-      (let ((new-supplied (safe-add supplied amount))
-            (utilization (calculate-utilization new-supplied borrowed))
-            (borrow-rate (calculate-borrow-rate utilization))
-            (supply-rate (calculate-supply-rate borrow-rate utilization 0.1)))
-        
-        (update lending-pools asset {
-          "total-supplied": new-supplied,
+      (let* ((utilization (calculate-utilization borrowed supplied))
+             (supply-rate (calculate-supply-rate utilization borrow-rate reserve-factor)))
+        (update pools token {
           "utilization-rate": utilization,
-          "borrow-rate": borrow-rate,
           "supply-rate": supply-rate,
-          "last-update": (chain-data 'time)
-        })))
-    
-    ;; Update user position
-    (with-default-read user-positions (format "{}:{}" [user asset])
-      { "supplied": 0.0, "borrowed": 0.0, "collateral": 0.0 }
-      { "supplied" := user-supplied }
-      (write user-positions (format "{}:{}" [user asset]) {
-        "user": user,
-        "asset": asset,
-        "supplied": (safe-add user-supplied amount),
-        "borrowed": user-supplied,  ;; Keep existing borrowed
-        "collateral": user-supplied, ;; Keep existing collateral
-        "last-update": (chain-data 'time)
-      }))
-    
-    (log-transaction "lending-core" "supply" {
-      "user": user,
-      "asset": asset,
-      "amount": amount
-    })
-    
-    (format "Supplied {} {} to lending pool" [amount asset]))
-  
-  ;; Query functions
-  (defun get-pool:object (asset:string)
-    @doc "Get lending pool information"
-    (read lending-pools asset))
-  
-  (defun get-user-position:object (user:string asset:string)
-    @doc "Get user position in lending pool"
-    (read user-positions (format "{}:{}" [user asset])))
-  
-  (defun list-pools:[object] ()
-    @doc "List all lending pools"
-    (select lending-pools (constantly true)))
+          "last-update": (at 'block-time (chain-data))
+        })
+        (format "Rates updated for pool: {}" [token]))))
 )
 
 ;; =============================================================================
-;; DEX PROTOCOL MODULES  
+;; SERVICE LAYER - Trading and exchange services  
 ;; =============================================================================
 
-(namespace 'kadena-dex)
+(namespace 'dex-core)
 
 (module order-book GOVERNANCE
-  @doc "Decentralized exchange order book"
+  @doc "Decentralized order book and matching engine"
   
   (defcap GOVERNANCE ()
     (enforce-keyset 'dex-admin))
   
-  ;; Import dependencies
+  ;; Import math utilities
   (use protocol-utils.math)
   (use protocol-utils.validation)
-  (use protocol-utils.events)
-  (use kadena-defi.token-registry)
   
   ;; Order schema
   (defschema order
     @doc "Trading order"
-    id:string
-    trader:string
-    side:string  ;; "BUY" or "SELL"
-    base-asset:string
-    quote-asset:string
-    amount:decimal
+    order-id:string
+    user:string
+    token-pair:string
+    side:string  ; "buy" or "sell"
+    order-type:string  ; "market", "limit", "stop"
+    quantity:decimal
     price:decimal
     filled:decimal
-    status:string
+    status:string  ; "open", "filled", "cancelled", "partial"
     created:time
     expires:time)
   
   (deftable orders:{order})
   
-  ;; Trading pair schema
-  (defschema trading-pair
-    @doc "Trading pair configuration"
-    base-asset:string
-    quote-asset:string
-    active:bool
-    min-order-size:decimal
-    tick-size:decimal
-    created:time)
+  ;; Trade execution schema
+  (defschema trade
+    @doc "Executed trade"
+    trade-id:string
+    buy-order:string
+    sell-order:string
+    token-pair:string
+    quantity:decimal
+    price:decimal
+    executed:time
+    buyer:string
+    seller:string)
   
-  (deftable trading-pairs:{trading-pair})
+  (deftable trades:{trade})
   
   ;; Order management
-  (defun create-trading-pair:string (base:string quote:string min-size:decimal tick:decimal)
-    @doc "Create new trading pair"
-    (validate-account base)
-    (validate-account quote)
-    (validate-positive min-size "Minimum order size")
-    (validate-positive tick "Tick size")
-    
-    (with-capability (GOVERNANCE)
-      ;; Verify both assets are registered
-      (get-token base)
-      (get-token quote)
-      
-      (insert trading-pairs (format "{}:{}" [base quote]) {
-        "base-asset": base,
-        "quote-asset": quote,
-        "active": true,
-        "min-order-size": min-size,
-        "tick-size": tick,
-        "created": (chain-data 'time)
-      })
-      
-      (log-admin-action "TRADING_PAIR_CREATED" {
-        "base": base,
-        "quote": quote
-      })
-      
-      (format "Trading pair {}/{} created" [base quote])))
-  
-  (defun place-order:string (order-id:string trader:string side:string 
-                            base:string quote:string amount:decimal price:decimal)
-    @doc "Place trading order"
-    (validate-account order-id)
-    (validate-account trader)
-    (validate-account base)
-    (validate-account quote)
-    (validate-positive amount "Order amount")
-    (validate-positive price "Order price")
-    
-    ;; Validate trading pair exists and is active
-    (with-read trading-pairs (format "{}:{}" [base quote]) {
-      "active" := is-active,
-      "min-order-size" := min-size
-    }
-      (enforce is-active "Trading pair not active")
-      (enforce (>= amount min-size) "Order below minimum size"))
-    
-    ;; Validate side
-    (enforce (contains side ["BUY" "SELL"]) "Invalid order side")
+  (defun place-order:string (order-id:string token-pair:string side:string 
+                           order-type:string quantity:decimal price:decimal
+                           expires:time)
+    @doc "Place new trading order"
+    (validate-positive-amount quantity)
+    (validate-positive-amount price)
+    (enforce (contains side ["buy", "sell"]) "Invalid order side")
+    (enforce (contains order-type ["market", "limit", "stop"]) "Invalid order type")
     
     (insert orders order-id {
-      "id": order-id,
-      "trader": trader,
+      "order-id": order-id,
+      "user": (tx-sender),
+      "token-pair": token-pair,
       "side": side,
-      "base-asset": base,
-      "quote-asset": quote,
-      "amount": amount,
+      "order-type": order-type,
+      "quantity": quantity,
       "price": price,
       "filled": 0.0,
-      "status": "OPEN",
-      "created": (chain-data 'time),
-      "expires": (add-time (chain-data 'time) (days 30))
+      "status": "open",
+      "created": (at 'block-time (chain-data)),
+      "expires": expires
     })
-    
-    (log-transaction "order-book" "place-order" {
-      "order-id": order-id,
-      "trader": trader,
-      "side": side,
-      "amount": amount,
-      "price": price
-    })
-    
-    (format "Order {} placed successfully" [order-id]))
+    (format "Order {} placed: {} {} {} at {}" [order-id side quantity token-pair price]))
   
-  ;; Query functions
-  (defun get-order:object (order-id:string)
-    @doc "Get order details"
-    (read orders order-id))
+  (defun cancel-order:string (order-id:string)
+    @doc "Cancel existing order"
+    (with-read orders order-id { "user" := order-user, "status" := status }
+      (enforce (= order-user (tx-sender)) "Only order owner can cancel")
+      (enforce (= status "open") "Order not open")
+      (update orders order-id { "status": "cancelled" })
+      (format "Order {} cancelled" [order-id])))
   
-  (defun get-orders-by-trader:[object] (trader:string)
-    @doc "Get all orders for trader"
-    (select orders (where 'trader (= trader))))
+  (defun get-order-book:[object] (token-pair:string side:string)
+    @doc "Get order book for token pair and side"
+    (let ((side-filter (where 'side (= side)))
+          (pair-filter (where 'token-pair (= token-pair)))
+          (status-filter (where 'status (= "open"))))
+      (select orders (and side-filter (and pair-filter status-filter)))))
   
-  (defun get-open-orders:[object] (base:string quote:string)
-    @doc "Get open orders for trading pair"
-    (select orders 
-            (and? (where 'base-asset (= base))
-                  (and? (where 'quote-asset (= quote))
-                        (where 'status (= "OPEN"))))))
+  (defun execute-trade:string (buy-order-id:string sell-order-id:string 
+                              trade-quantity:decimal trade-price:decimal)
+    @doc "Execute trade between buy and sell orders"
+    (with-capability (GOVERNANCE)
+      (let ((trade-id (format "{}_{}" [buy-order-id sell-order-id])))
+        (with-read orders buy-order-id {
+          "user" := buyer,
+          "quantity" := buy-qty,
+          "filled" := buy-filled
+        }
+          (with-read orders sell-order-id {
+            "user" := seller,
+            "quantity" := sell-qty,
+            "filled" := sell-filled
+          }
+            (enforce (!= buyer seller) "Cannot trade with self")
+            (enforce (<= trade-quantity (- buy-qty buy-filled)) "Insufficient buy quantity")
+            (enforce (<= trade-quantity (- sell-qty sell-filled)) "Insufficient sell quantity")
+            
+            ;; Record trade
+            (insert trades trade-id {
+              "trade-id": trade-id,
+              "buy-order": buy-order-id,
+              "sell-order": sell-order-id,
+              "token-pair": (at 'token-pair (read orders buy-order-id)),
+              "quantity": trade-quantity,
+              "price": trade-price,
+              "executed": (at 'block-time (chain-data)),
+              "buyer": buyer,
+              "seller": seller
+            })
+            
+            ;; Update order fill amounts
+            (update orders buy-order-id { 
+              "filled": (+ buy-filled trade-quantity),
+              "status": (if (= (+ buy-filled trade-quantity) buy-qty) "filled" "partial")
+            })
+            (update orders sell-order-id { 
+              "filled": (+ sell-filled trade-quantity),
+              "status": (if (= (+ sell-filled trade-quantity) sell-qty) "filled" "partial")
+            })
+            
+            (format "Trade executed: {} {} at {}" [trade-quantity (at 'token-pair (read orders buy-order-id)) trade-price]))))))
+  
+  (defun get-user-orders:[object] (user:string)
+    @doc "Get all orders for user"
+    (select orders (where 'user (= user))))
+  
+  (defun get-recent-trades:[object] (token-pair:string count:integer)
+    @doc "Get recent trades for token pair"
+    (take count 
+          (sort (select trades (where 'token-pair (= token-pair)))
+                (lambda (a b) (> (at 'executed a) (at 'executed b))))))
 )
 
-;; Initialize tables
-(create-table event-logs)
-(create-table tokens)
-(create-table lending-pools)
-(create-table user-positions)
-(create-table orders)
-(create-table trading-pairs)
+;; Table creation will be handled in the test environment
+;; after namespace and keyset setup

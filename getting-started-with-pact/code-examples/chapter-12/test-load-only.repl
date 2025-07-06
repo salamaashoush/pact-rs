@@ -1,0 +1,13 @@
+;; Load-only test for gas optimization examples
+(begin-tx "Test gas optimization loading")
+
+(env-data {"admin": ["admin"]})
+(env-keys ["admin"])
+(define-keyset 'admin (read-keyset "admin"))
+
+(load "gas-optimization-examples.pact")
+(load "performance-monitoring.pact")
+
+(commit-tx)
+
+(print "Gas optimization modules loaded successfully!")

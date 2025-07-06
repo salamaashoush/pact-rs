@@ -1,0 +1,136 @@
+;; tests/test-nft-basic.repl
+;; Basic NFT functionality tests
+
+(begin-tx "Setup test environment")
+
+(env-data {
+  "nft-admin": {
+    "keys": ["nft-admin-key"],
+    "pred": "keys-all"
+  },
+  "alice-keyset": {
+    "keys": ["alice-key"],
+    "pred": "keys-all"
+  },
+  "bob-keyset": {
+    "keys": ["bob-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["nft-admin-key"])
+
+(define-keyset 'nft-admin (read-keyset "nft-admin"))
+(define-keyset 'alice-keyset (read-keyset "alice-keyset"))
+(define-keyset 'bob-keyset (read-keyset "bob-keyset"))
+
+;; Load modules
+(load "../interfaces/nft-v2.pact")
+(load "../modules/nft-token-simplified.pact")
+
+(commit-tx)
+
+;; Test Collection Creation
+(begin-tx "Test collection creation")
+
+(env-keys ["alice-key"])
+
+(expect "Create collection succeeds"
+  "Collection CryptoArt created"
+  (nft-token.create-collection 
+    "CryptoArt" 
+    "alice" 
+    "Digital art collection" 
+    100 
+    "ipfs://QmTest/"
+    5.0
+    0.05))
+
+(expect "Collection info correct"
+  { "name": "CryptoArt"
+  , "creator": "alice"
+  , "max-supply": 100
+  , "minted": 0
+  , "mint-price": 5.0
+  , "royalty-rate": 0.05
+  , "status": "active" }
+  (at ['name 'creator 'max-supply 'minted 'mint-price 'royalty-rate 'status]
+    (nft-token.get-collection-info "CryptoArt")))
+
+(commit-tx)
+
+;; Test Minting
+(begin-tx "Test NFT minting")
+
+(env-keys ["alice-key"])
+
+;; Mint first NFT
+(expect "Mint succeeds"
+  "CryptoArt:1"
+  (nft-token.mint "CryptoArt" "alice" (read-keyset "alice-keyset")))
+
+(expect "Token owner correct"
+  "alice"
+  (nft-token.get-owner "CryptoArt:1"))
+
+(expect "Balance updated"
+  1
+  (nft-token.get-balance "alice"))
+
+;; Mint second NFT to Bob
+(env-keys ["bob-key"])
+(expect "Bob mint succeeds"
+  "CryptoArt:2"
+  (nft-token.mint "CryptoArt" "bob" (read-keyset "bob-keyset")))
+
+(expect "Bob balance correct"
+  1
+  (nft-token.get-balance "bob"))
+
+(expect "Collection minted count"
+  2
+  (at 'minted (nft-token.get-collection-info "CryptoArt")))
+
+(commit-tx)
+
+;; Test Transfer
+(begin-tx "Test NFT transfer")
+
+(env-keys ["alice-key"])
+
+(expect "Transfer succeeds"
+  "Transfer complete"
+  (nft-token.transfer "CryptoArt:1" "alice" "bob"))
+
+(expect "New owner is Bob"
+  "bob"
+  (nft-token.get-owner "CryptoArt:1"))
+
+(expect "Alice balance decreased"
+  0
+  (nft-token.get-balance "alice"))
+
+(expect "Bob balance increased"
+  2
+  (nft-token.get-balance "bob"))
+
+(commit-tx)
+
+;; Test Error Cases
+(begin-tx "Test error cases")
+
+;; Try to transfer without ownership
+(env-keys ["alice-key"])
+(expect-failure "Non-owner transfer fails"
+  "Not token owner"
+  (nft-token.transfer "CryptoArt:2" "alice" "bob"))
+
+;; Try to transfer to self
+(env-keys ["bob-key"])
+(expect-failure "Self transfer fails"
+  "Cannot transfer to self"
+  (nft-token.transfer "CryptoArt:2" "bob" "bob"))
+
+(commit-tx)
+
+(print "All NFT basic tests passed!")

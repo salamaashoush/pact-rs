@@ -105,7 +105,7 @@
       (let ((role-info (read roles role))
             (assigner (tx-sender))
             (assigner-role (get-user-role assigner namespace))
-            (expires-time (add-time (chain-data 'time) (days expires-days))))
+            (expires-time (add-time (at 'block-time (chain-data)) (days expires-days))))
         
         ;; Ensure assigner has higher level than assigned role
         (enforce (> (at 'level assigner-role) (at 'level role-info))
@@ -116,7 +116,7 @@
           "namespace": namespace,
           "role": role,
           "assigned-by": assigner,
-          "assigned-at": (chain-data 'time),
+          "assigned-at": (at 'block-time (chain-data)),
           "expires": expires-time
         })
         
@@ -127,7 +127,7 @@
     (with-capability (ROLE_MANAGER namespace)
       (let ((existing-role (read user-roles (format "{}:{}" [user namespace]))))
         (update user-roles (format "{}:{}" [user namespace]) {
-          "expires": (chain-data 'time)  ;; Immediately expire
+          "expires": (at 'block-time (chain-data))  ;; Immediately expire
         })
         (format "Role revoked for {} in namespace {}" [user namespace]))))
   
@@ -146,7 +146,7 @@
           "namespace": child,
           "parent": parent,
           "level": (+ parent-level 1),
-          "created-at": (chain-data 'time)
+          "created-at": (at 'block-time (chain-data))
         })
         
         ;; Auto-assign parent admins as child admins
@@ -175,7 +175,7 @@
     (with-default-read user-roles (format "{}:{}" [user namespace])
       { "role": "NONE", "expires": (time "1970-01-01T00:00:00Z") }
       { "role" := role-name, "expires" := expires }
-      (if (and (!= role-name "NONE") (> expires (chain-data 'time)))
+      (if (and (!= role-name "NONE") (> expires (at 'block-time (chain-data))))
           (read roles role-name)
           { "name": "NONE", "level": 0, "permissions": [], "description": "No role" })))
   
@@ -290,7 +290,7 @@
         "namespace": namespace,
         "power": power,
         "source": source,
-        "last-update": (chain-data 'time)
+        "last-update": (at 'block-time (chain-data))
       })
       (format "Voting power {} set for {} in {}" [power user namespace])))
   
@@ -314,7 +314,7 @@
         "proposal-type": proposal-type,
         "target-namespace": target-namespace,
         "parameters": parameters,
-        "created-at": (chain-data 'time),
+        "created-at": (at 'block-time (chain-data)),
         "voting-period": VOTING_PERIOD_DAYS,
         "execution-delay": EXECUTION_DELAY_DAYS,
         "status": "ACTIVE",
@@ -353,7 +353,7 @@
             "voter": voter,
             "choice": choice,
             "power": voting-power,
-            "timestamp": (chain-data 'time)
+            "timestamp": (at 'block-time (chain-data))
           })
           
           ;; Update proposal vote counts
@@ -380,7 +380,7 @@
       "status" := status
     }
       (enforce (= status "ACTIVE") "Proposal not active")
-      (enforce (>= (diff-time (chain-data 'time) created) (days period)) 
+      (enforce (>= (diff-time (at 'block-time (chain-data)) created) (days period)) 
                "Voting period not ended")
       
       (let ((total-votes (+ (+ for-votes against-votes) abstain-votes))
@@ -412,7 +412,7 @@
       }
         (enforce (not is-executed) "Proposal already executed")
         (let ((execution-time (add-time created (days (+ voting-period delay)))))
-          (enforce (>= (chain-data 'time) execution-time) "Execution delay not passed")
+          (enforce (>= (at 'block-time (chain-data)) execution-time) "Execution delay not passed")
           
           ;; Execute based on proposal type
           (execute-proposal-action prop-type params)

@@ -1,0 +1,12 @@
+/home/salama/Workspace/Kadena/pact-5/pactlings/target/release/deps/libinotify-a379d4b34ac05c13.rmeta: /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/lib.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/events.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/fd_guard.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/inotify.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/util.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/watches.rs
+
+/home/salama/Workspace/Kadena/pact-5/pactlings/target/release/deps/libinotify-a379d4b34ac05c13.rlib: /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/lib.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/events.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/fd_guard.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/inotify.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/util.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/watches.rs
+
+/home/salama/Workspace/Kadena/pact-5/pactlings/target/release/deps/inotify-a379d4b34ac05c13.d: /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/lib.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/events.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/fd_guard.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/inotify.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/util.rs /home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/watches.rs
+
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/lib.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/events.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/fd_guard.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/inotify.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/util.rs:
+/home/salama/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/inotify-0.9.6/src/watches.rs:

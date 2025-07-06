@@ -1,0 +1,33 @@
+(begin-tx)
+
+(env-data {"protocol-admin": ["admin"]})
+(env-keys ["admin"])
+(define-keyset 'protocol-admin (read-keyset "protocol-admin"))
+
+;; Test just the events module
+(module events GOVERNANCE
+  @doc "Event logging and monitoring system"
+  
+  (defcap GOVERNANCE ()
+    (enforce-keyset 'protocol-admin))
+  
+  ;; Event schema
+  (defschema event-log
+    @doc "Standard event log entry"
+    event-type:string
+    module:string
+    function:string
+    data:object
+    user:string
+    timestamp:time
+    block-height:integer
+    tx-hash:string)
+  
+  (deftable event-logs:{event-log})
+)
+
+(create-table event-logs)
+
+(commit-tx)
+
+(print "Events module loaded successfully")

@@ -1,0 +1,33 @@
+[package]
+name = "pact-compiler"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Complete compilation orchestration for the Pact smart contract language"
+
+[dependencies]
+pact-syntax = { path = "../pact-syntax" }
+pact-ir = { path = "../pact-ir" }
+pact-eval = { path = "../pact-eval" }
+pact-cek = { path = "../pact-cek" }
+pact-core = { path = "../pact-core" }
+pact-crypto = { path = "../pact-crypto" }
+# pact-builtins = { path = "../pact-builtins" } # Removed - builtins are in pact-cek now
+pact-db = { path = "../pact-db" }
+pact-schema = { path = "../pact-schema" }
+pact-modules = { path = "../pact-modules" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+blake2 = "0.10"
+hex = "0.4"
+compact_str = "0.8.1"
+ciborium = "0.2"
+tokio = { version = "1.35", features = ["rt"] }
+futures = "0.3"
+num-bigint = "0.4"
+[dev-dependencies]
+proptest = { workspace = true }

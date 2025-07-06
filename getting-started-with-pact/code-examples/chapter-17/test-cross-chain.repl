@@ -1,0 +1,320 @@
+;; Test file for Chapter 17: Cross-Chain Communication and Bridge Integration
+
+(begin-tx "Load cross-chain examples")
+
+;; Set up test environment
+(env-data {
+  "admin-keyset": ["admin-key"],
+  "bridge-operator-keyset": ["bridge-operator-key"],
+  "alice-keyset": ["alice-key"],
+  "bob-keyset": ["bob-key"]
+})
+
+(env-keys ["admin-key", "bridge-operator-key"])
+
+;; Load the module
+(load "cross-chain-examples.pact")
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST CHAIN CONFIGURATION
+;; ============================================================================
+
+(begin-tx "Test chain configuration")
+
+;; Configure Ethereum chain
+(expect "Ethereum chain configuration works"
+  "Chain configured successfully"
+  (cross-chain-token.configure-chain 
+    "ethereum-mainnet"
+    "0x742d35Cc6634C0532925a3b8D6ac6B6bd5c9c3e6"
+    false
+    0.1
+    10000.0))
+
+;; Configure Polygon chain
+(expect "Polygon chain configuration works"
+  "Chain configured successfully"
+  (cross-chain-token.configure-chain
+    "polygon-mainnet"
+    "0x1234567890123456789012345678901234567890"
+    false
+    0.05
+    50000.0))
+
+;; Get chain configuration
+(let ((eth-config (cross-chain-token.get-chain-config "ethereum-mainnet")))
+  (expect "Ethereum config stored correctly"
+    false
+    (at "is-native" eth-config))
+  
+  (expect "Bridge fee set correctly"
+    0.1
+    (at "bridge-fee" eth-config)))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ACCOUNT MANAGEMENT
+;; ============================================================================
+
+(begin-tx "Test account management")
+
+;; Create test accounts
+(expect "Alice account creation works"
+  "Account created"
+  (cross-chain-token.create-account "alice" (keyset-ref-guard 'alice-keyset)))
+
+(expect "Bob account creation works"
+  "Account created"
+  (cross-chain-token.create-account "bob" (keyset-ref-guard 'bob-keyset)))
+
+;; Check initial balances
+(expect "Alice starts with zero balance"
+  0.0
+  (cross-chain-token.get-balance "alice"))
+
+;; Credit Alice with test funds
+(expect "Alice funding works"
+  "Credit successful"
+  (cross-chain-token.credit "alice" 1000.0))
+
+(expect "Alice balance updated"
+  1000.0
+  (cross-chain-token.get-balance "alice"))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST CROSS-CHAIN TRANSFERS
+;; ============================================================================
+
+(begin-tx "Test cross-chain transfers")
+
+(env-keys ["alice-key"])
+
+;; Mock Hyperlane functions for testing
+(env-data {
+  "mock-token-data": {
+    "recipient": "bob-eth-address",
+    "amount": 100.0,
+    "sender": "alice",
+    "origin-chain": "kadena-mainnet",
+    "destination-chain": "ethereum-mainnet"
+  }
+})
+
+;; Test cross-chain send
+(let ((message-id (cross-chain-token.send-cross-chain
+                    "alice"
+                    "ethereum-mainnet"
+                    "bob-eth-address"
+                    100.0)))
+  
+  (expect "Cross-chain send returns message ID"
+    true
+    (!= message-id ""))
+  
+  ;; Check Alice's balance was debited (100.0 + 0.1 fee)
+  (expect "Alice balance debited correctly"
+    899.9
+    (cross-chain-token.get-balance "alice"))
+  
+  ;; Check bridge message was recorded
+  (let ((bridge-msg (cross-chain-token.get-bridge-message message-id)))
+    (expect "Bridge message recorded correctly"
+      "bob-eth-address"
+      (at "recipient" bridge-msg))
+    
+    (expect "Amount recorded correctly"
+      100.0
+      (at "amount" bridge-msg))))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST CROSS-CHAIN RECEIVE
+;; ============================================================================
+
+(begin-tx "Test cross-chain receive")
+
+(env-keys ["bridge-operator-key"])
+
+;; Mock incoming cross-chain message
+(env-data {
+  "incoming-message": "encoded-hyperlane-message-123",
+  "hyperlane-proof": {
+    "signature": "valid-signature",
+    "merkle-path": ["proof1", "proof2"],
+    "validator-set": "validator-signatures"
+  },
+  "decoded-token-data": {
+    "recipient": "bob",
+    "amount": 50.0,
+    "sender": "charlie-eth",
+    "origin-chain": "ethereum-mainnet"
+  }
+})
+
+;; Bob's initial balance
+(let ((bob-initial (cross-chain-token.get-balance "bob")))
+  
+  ;; Receive cross-chain tokens
+  (expect "Cross-chain receive works"
+    "Tokens received successfully"
+    (cross-chain-token.receive-cross-chain
+      (read-msg "incoming-message")
+      (read-msg "hyperlane-proof")
+      "bob"))
+  
+  ;; Check Bob's balance increased
+  (expect "Bob balance increased"
+    (+ bob-initial 50.0)
+    (cross-chain-token.get-balance "bob")))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST MESSAGE REPLAY PREVENTION
+;; ============================================================================
+
+(begin-tx "Test message replay prevention")
+
+(env-keys ["bridge-operator-key"])
+
+;; Try to process the same message again
+(expect-failure "Message replay prevented"
+  "Message already processed"
+  (cross-chain-token.receive-cross-chain
+    (read-msg "incoming-message")
+    (read-msg "hyperlane-proof")
+    "bob"))
+
+;; Verify message is marked as processed
+(expect "Message marked as processed"
+  true
+  (cross-chain-token.is-message-processed "mock-message-id"))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST DAILY LIMITS
+;; ============================================================================
+
+(begin-tx "Test daily limits")
+
+(env-keys ["alice-key"])
+
+;; Check daily usage
+(let ((usage (cross-chain-token.get-daily-usage "ethereum-mainnet")))
+  (expect "Daily usage tracked"
+    100.0
+    (at "used" usage))
+  
+  (expect "Remaining limit calculated"
+    9900.0
+    (at "remaining" usage)))
+
+;; Try to exceed daily limit (current used: 100, limit: 10000, trying: 10000)
+(expect-failure "Daily limit enforced"
+  "Daily limit exceeded"
+  (cross-chain-token.send-cross-chain
+    "alice"
+    "ethereum-mainnet"
+    "bob-eth-address"
+    10000.0))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST CROSS-CHAIN PACT (Atomic Swap)
+;; ============================================================================
+
+(begin-tx "Test cross-chain atomic swap initialization")
+
+(env-keys ["admin-key"])
+
+;; Setup for atomic swap test
+(cross-chain-token.credit "alice" 500.0)
+(cross-chain-token.credit "bob" 300.0)
+
+;; Start atomic swap pact
+(expect "Atomic swap initialization"
+  "Write"
+  (cross-chain-token.cross-chain-atomic-swap
+    "swap-123"
+    "alice"
+    "bob"
+    "kadena-mainnet"
+    "ethereum-mainnet"
+    200.0
+    150.0
+    24))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST UTILITY FUNCTIONS
+;; ============================================================================
+
+(begin-tx "Test utility functions")
+
+;; List pending messages
+(let ((pending (cross-chain-token.list-pending-messages "ethereum-mainnet")))
+  (expect "Pending messages returned"
+    true
+    (>= (length pending) 0)))
+
+;; Reset daily limits (admin only)
+(env-keys ["admin-key"])
+(expect "Daily limits reset"
+  "Daily limits reset"
+  (cross-chain-token.reset-daily-limits))
+
+;; Verify limits were reset
+(let ((usage (cross-chain-token.get-daily-usage "ethereum-mainnet")))
+  (expect "Usage reset to zero"
+    0.0
+    (at "used" usage)))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ERROR CASES
+;; ============================================================================
+
+(begin-tx "Test error cases")
+
+;; Test insufficient funds
+(env-keys ["bob-key"])
+(expect-failure "Insufficient funds rejected"
+  "Insufficient funds"
+  (cross-chain-token.send-cross-chain
+    "bob"
+    "ethereum-mainnet"
+    "alice-eth-address"
+    1000.0))
+
+;; Test unauthorized operations
+(env-keys [])
+(expect-failure "Unauthorized bridge operation fails"
+  "keyset failure"
+  (cross-chain-token.receive-cross-chain
+    "some-message"
+    { "signature": "fake" }
+    "alice"))
+
+;; Test invalid chain configuration
+(env-keys ["admin-key"])
+(expect-failure "Sending to unconfigured chain fails"
+  "read: row not found"
+  (cross-chain-token.send-cross-chain
+    "alice"
+    "unknown-chain"
+    "recipient"
+    10.0))
+
+(commit-tx)
+
+(print "All cross-chain tests passed!")

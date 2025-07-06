@@ -32,9 +32,19 @@
   (defun rotate:string (account:string new-guard:guard)
     @doc "Rotate account guard")
 
+  (defun precision:integer ()
+    @doc "Return maximum precision for token amounts")
+
+  (defun details:object{account} (account:string)
+    @doc "Get account details")
+
   ;; Transfer capability
   (defcap TRANSFER:bool (sender:string receiver:string amount:decimal)
-    @doc "Capability for transferring tokens")
+    @doc "Managed capability sealing AMOUNT for transfer from SENDER to RECEIVER. Permits any number of transfers up to AMOUNT."
+    @managed amount TRANSFER-mgr)
+
+  (defun TRANSFER-mgr:decimal (managed:decimal requested:decimal)
+    @doc "Manages TRANSFER AMOUNT linearly, such that a request for 1.0 amount on a 3.0 managed quantity emits updated amount 2.0.")
 
   ;; Account schema
   (defschema account

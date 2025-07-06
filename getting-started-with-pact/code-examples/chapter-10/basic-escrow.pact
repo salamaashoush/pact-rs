@@ -52,91 +52,100 @@
 
     ;; Step 0: Initialize escrow
     (step
-      (enforce (> amount 0.0) "Amount must be positive")
-      (enforce (> timeout-hours 0) "Timeout must be positive")
-      (enforce (!= buyer seller) "Buyer and seller must be different")
-      (enforce (!= buyer arbitrator) "Buyer and arbitrator must be different")
-      (enforce (!= seller arbitrator) "Seller and arbitrator must be different")
+      (do
+        (enforce (> amount 0.0) "Amount must be positive")
+        (enforce (> timeout-hours 0) "Timeout must be positive")
+        (enforce (!= buyer seller) "Buyer and seller must be different")
+        (enforce (!= buyer arbitrator) "Buyer and arbitrator must be different")
+        (enforce (!= seller arbitrator) "Seller and arbitrator must be different")
 
-      (let ((timeout-time (add-time (chain-data 'time) (hours timeout-hours)))
-            (escrow-account (create-escrow-account escrow-id)))
+        (let ((timeout-time (add-time (at 'block-time (chain-data)) (hours timeout-hours)))
+              (escrow-account (create-escrow-account escrow-id)))
 
-        ;; Transfer funds from buyer to escrow account
-        (install-capability (coin.TRANSFER buyer escrow-account amount))
-        (coin.transfer-create buyer escrow-account 
-                             (create-capability-guard (ESCROW_GUARD escrow-id)) 
-                             amount)
+          ;; Transfer funds from buyer to escrow account
+          (install-capability (coin.TRANSFER buyer escrow-account amount))
+          (coin.transfer-create buyer escrow-account 
+                               (create-capability-guard (ESCROW_GUARD escrow-id)) 
+                               amount)
 
-        ;; Record escrow details
-        (insert escrows escrow-id {
-          "buyer": buyer,
-          "seller": seller,
-          "amount": amount,
-          "created": (chain-data 'time),
-          "timeout": timeout-time,
-          "status": "active",
-          "arbitrator": arbitrator
-        })
+          ;; Record escrow details
+          (insert escrows escrow-id {
+            "buyer": buyer,
+            "seller": seller,
+            "amount": amount,
+            "created": (at 'block-time (chain-data)),
+            "timeout": timeout-time,
+            "status": "active",
+            "arbitrator": arbitrator
+          })
 
-        ;; Emit creation event
-        (emit-event (ESCROW_CREATED escrow-id buyer seller amount))
+          ;; Emit creation event
+          (emit-event (ESCROW_CREATED escrow-id buyer seller amount))
 
-        (format "Escrow {} created: {} from {} to {} (timeout: {})" 
-                [escrow-id amount buyer seller timeout-time])))
+          (format "Escrow {} created: {} from {} to {} (timeout: {})" 
+                  [escrow-id amount buyer seller timeout-time])))))
 
     ;; Step 1: Complete or refund escrow
     (step-with-rollback
       ;; Normal completion: release to seller
-      (with-read escrows escrow-id { 
-        "status" := status,
-        "seller" := seller-account,
-        "amount" := escrow-amount
-      }
-        (enforce (= status "active") "Escrow not active")
+      (do
+        (with-read escrows escrow-id { 
+          "status" := status,
+          "seller" := seller-account,
+          "amount" := escrow-amount
+        }
+          (enforce (= status "active") "Escrow not active")
 
-        (let ((escrow-account (create-escrow-account escrow-id)))
-          ;; Transfer funds to seller
-          (with-capability (ESCROW_GUARD escrow-id)
-            (install-capability (coin.TRANSFER escrow-account seller-account escrow-amount))
-            (coin.transfer escrow-account seller-account escrow-amount))
+          (let ((escrow-account (create-escrow-account escrow-id)))
+            ;; Transfer funds to seller
+            (with-capability (ESCROW_GUARD escrow-id)
+              (install-capability (coin.TRANSFER escrow-account seller-account escrow-amount))
+              (coin.transfer escrow-account seller-account escrow-amount))
 
-          ;; Update status
-          (update escrows escrow-id { "status": "completed" })
+            ;; Update status
+            (update escrows escrow-id { "status": "completed" })
 
-          ;; Emit completion event
-          (emit-event (ESCROW_COMPLETED escrow-id))
+            ;; Emit completion event
+            (emit-event (ESCROW_COMPLETED escrow-id))
 
-          (format "Escrow {} completed: {} released to {}" 
-                  [escrow-id escrow-amount seller-account])))
+            (format "Escrow {} completed: {} released to {}" 
+                    [escrow-id escrow-amount seller-account]))))
 
       ;; Rollback: refund to buyer on timeout or dispute
-      (with-read escrows escrow-id { 
-        "timeout" := timeout-time,
-        "buyer" := buyer-account,
-        "amount" := escrow-amount,
-        "status" := status
-      }
-        (enforce (= status "active") "Escrow not active")
-        
-        ;; Check if timeout reached OR arbitrator initiated rollback
-        (enforce-one "Timeout reached or arbitrator decision"
-          [(enforce (>= (chain-data 'time) timeout-time) "Timeout not reached")
-           (enforce (= (tx-sender) arbitrator) "Only arbitrator can force refund")])
+      (do
+        (with-read escrows escrow-id { 
+          "timeout" := timeout-time,
+          "buyer" := buyer-account,
+          "amount" := escrow-amount,
+          "status" := status
+        }
+          (enforce (= status "active") "Escrow not active")
+          
+          ;; Check if timeout reached OR arbitrator initiated rollback
+          (enforce-one "Timeout reached or arbitrator decision"
+            [(enforce (>= (at 'block-time (chain-data)) timeout-time) "Timeout not reached")
+             (enforce (= (tx-sender) arbitrator) "Only arbitrator can force refund")])
 
-        (let ((escrow-account (create-escrow-account escrow-id)))
-          ;; Refund to buyer
-          (with-capability (ESCROW_GUARD escrow-id)
-            (install-capability (coin.TRANSFER escrow-account buyer-account escrow-amount))
-            (coin.transfer escrow-account buyer-account escrow-amount))
+          (let ((escrow-account (create-escrow-account escrow-id)))
+            ;; Refund to buyer
+            (with-capability (ESCROW_GUARD escrow-id)
+              (install-capability (coin.TRANSFER escrow-account buyer-account escrow-amount))
+              (coin.transfer escrow-account buyer-account escrow-amount))
 
-          ;; Update status
-          (update escrows escrow-id { "status": "refunded" })
+            ;; Update status
+            (update escrows escrow-id { "status": "refunded" })
 
-          ;; Emit refund event
-          (emit-event (ESCROW_REFUNDED escrow-id))
+            ;; Emit refund event
+            (emit-event (ESCROW_REFUNDED escrow-id))
 
-          (format "Escrow {} refunded: {} returned to {}" 
-                  [escrow-id escrow-amount buyer-account])))))
+            (format "Escrow {} refunded: {} returned to {}" 
+                    [escrow-id escrow-amount buyer-account])))))))
+
+    ;; Step 2: Final confirmation step
+    (step
+      (do
+        (with-read escrows escrow-id { "status" := final-status }
+          (format "Escrow {} finalized with status: {}" [escrow-id final-status])))))
 
   ;; Query functions
   (defun get-escrow:object (escrow-id:string)
@@ -171,7 +180,7 @@
       ;; Log the forced refund
       (insert forced-refunds escrow-id {
         "reason": reason,
-        "timestamp": (chain-data 'time),
+        "timestamp": (at 'block-time (chain-data)),
         "arbitrator": arb
       })
       

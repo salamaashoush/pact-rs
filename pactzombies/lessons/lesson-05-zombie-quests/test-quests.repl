@@ -1,0 +1,252 @@
+; PactZombies Lesson 5 - Testing Multi-Step Quests
+; ================================================
+
+; Setup
+(env-data 
+  { "zombie-quest-admin": {"keys": ["admin-key"]}
+  , "zombie-admin": {"keys": ["admin-key"]}
+  , "zombie-coin-admin": {"keys": ["admin-key"]}
+  , "quest-pool-ks": {"keys": ["quest-pool-key"]}
+  })
+(env-keys ["admin-key"])
+
+; Load contracts (assuming previous lessons are available)
+(begin-tx)
+(load "../lesson-04-zombie-economics/zombie-coin.pact")
+(load "../lesson-03-advanced-zombies/zombie-ownership.pact")
+(load "zombie-quests.pact")
+(commit-tx)
+
+; Create tables
+(begin-tx)
+(use zombie-coin)
+(use zombies)
+(use zombie-quests)
+(create-table accounts-table)
+(create-table zombies-table)
+(create-table market-table)
+(create-table game-state-table)
+(create-table quest-table)
+(create-table quest-progress-table)
+(commit-tx)
+
+; Initialize
+(begin-tx)
+(use zombies)
+(use zombie-coin)
+(initialize)
+(create-account "quest-pool" (read-keyset "quest-pool-ks"))
+(mint "quest-pool" 10000.0)
+(commit-tx)
+
+; Create test accounts and zombies
+(begin-tx)
+(use zombie-coin)
+(use zombies)
+
+; Create accounts
+(env-data {"alice-ks": {"keys": ["alice-key"]}, "sender": "alice"})
+(create-account "alice" (read-keyset "alice-ks"))
+(mint "alice" 1000.0)
+
+(env-data {"bob-ks": {"keys": ["bob-key"]}, "sender": "bob"})
+(create-account "bob" (read-keyset "bob-ks"))
+(mint "bob" 1000.0)
+
+; Create high-level zombies for quests
+(env-data {"sender": "alice"})
+(create-zombie "Alice Quest Hero")
+(create-zombie "Alice Trade Zombie")
+
+(env-data {"sender": "bob"})
+(create-zombie "Bob Quest Hero")
+(create-zombie "Bob Trade Zombie")
+
+; Level up zombies to meet quest requirements
+; (In real implementation, this would be done through battles)
+(env-keys ["admin-key"])
+(let ((alice-zombies (select zombies-table (where "owner" (= "alice"))))
+      (bob-zombies (select zombies-table (where "owner" (= "bob")))))
+  (map (lambda (z) 
+    (update zombies-table (at "id" z) { "level": 5 }))
+    (+ alice-zombies bob-zombies)))
+(commit-tx)
+
+; Test 1: Simple Training Quest
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T10:00:00Z")})
+
+(print "Test 1: Simple Training Quest")
+(print "=============================")
+
+(let ((alice-zombies (zombies.get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print (start-training-quest zombie-id)))
+    (print "No zombies available")))
+
+(print "")
+(print "Alice's balance after training:")
+(print (format "{} ZMB" [(zombie-coin.get-balance "alice")]))
+(commit-tx)
+
+; Test 2: Two-Party Trade Quest (Step 1)
+(begin-tx)
+(use zombie-quests)
+(use zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T11:00:00Z")})
+
+(print "")
+(print "Test 2: Two-Party Trade Quest")
+(print "==============================")
+
+(let ((alice-zombies (get-my-zombies))
+      (bob-zombies (select zombies-table (where "owner" (= "bob")))))
+  (if (and (> (length alice-zombies) 0) (> (length bob-zombies) 0))
+    (let ((alice-zombie (format "zombie_{}" [(at "dna" (at 0 alice-zombies))]))
+          (bob-zombie (format "zombie_{}" [(at "dna" (at 0 bob-zombies))])))
+      (print "Step 1: Alice initiates trade")
+      (print (zombie-trade-quest alice-zombie bob-zombie "alice" "bob")))
+    (print "Not enough zombies for trade")))
+(commit-tx)
+
+; Test 2: Two-Party Trade Quest (Step 2)
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "bob"})
+(env-chain-data {"block-time": (time "2024-01-01T11:01:00Z")})
+
+(print "Step 2: Bob confirms trade")
+(continue-pact 1) ; Continue the trade quest
+(commit-tx)
+
+; Test 2: Two-Party Trade Quest (Step 3)
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "alice"}) ; Either party can complete
+(env-chain-data {"block-time": (time "2024-01-01T11:02:00Z")})
+
+(print "Step 3: Complete trade")
+(continue-pact 2) ; Complete the trade
+(commit-tx)
+
+; Verify trade results
+(begin-tx)
+(use zombies)
+(print "")
+(print "Ownership after trade:")
+(print (format "Alice owns {} zombies" [(get-zombie-count "alice")]))
+(print (format "Bob owns {} zombies" [(get-zombie-count "bob")]))
+(commit-tx)
+
+; Test 3: Multi-Stage Dungeon Quest (Step 1)
+(begin-tx)
+(use zombie-quests)
+(use zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T12:00:00Z"), "block-height": 1000})
+
+(print "")
+(print "Test 3: Dungeon Quest")
+(print "=====================")
+
+(let ((alice-zombies (get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print "Step 1: Enter dungeon")
+      (print (dungeon-quest zombie-id)))
+    (print "No zombies available")))
+(commit-tx)
+
+; Test 3: Dungeon Quest (Step 2 - Battle)
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T12:10:00Z"), "block-height": 1150})
+
+(print "Step 2: Battle monsters")
+(continue-pact 1)
+(commit-tx)
+
+; Test 3: Dungeon Quest (Step 3 - Boss)
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T12:20:00Z"), "block-height": 1200})
+
+(print "Step 3: Boss battle")
+(continue-pact 2)
+(commit-tx)
+
+; Test 4: Rescue Mission (Step 1)
+(begin-tx)
+(use zombie-quests)
+(use zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T13:00:00Z"), "block-height": 1500})
+
+(print "")
+(print "Test 4: Rescue Mission")
+(print "======================")
+
+; Create a zombie to be rescued
+(env-data {"sender": "bob"})
+(create-zombie "Captive Zombie")
+
+(env-data {"sender": "alice"})
+(let ((alice-zombies (get-my-zombies))
+      (captive-zombies (select zombies-table (where "name" (= "Captive Zombie")))))
+  (if (and (> (length alice-zombies) 0) (> (length captive-zombies) 0))
+    (let ((hero-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))]))
+          (captive-id (format "zombie_{}" [(at "dna" (at 0 captive-zombies))])))
+      (print "Step 1: Start rescue mission")
+      (print (rescue-mission hero-id captive-id)))
+    (print "Cannot start rescue mission")))
+(commit-tx)
+
+; Test 4: Rescue Mission (Step 2 - Within time limit)
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T13:30:00Z"), "block-height": 1600})
+
+(print "Step 2: Attempt rescue (within time limit)")
+(continue-pact 1)
+(commit-tx)
+
+; Test 5: View quest information
+(begin-tx)
+(use zombie-quests)
+(env-data {"sender": "alice"})
+
+(print "")
+(print "Quest Summary")
+(print "=============")
+
+(print "Alice's active quests:")
+(print (get-active-quests "alice"))
+
+(print "")
+(print "Alice's quest history:")
+(let ((alice-zombies (zombies.get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print (get-zombie-quest-history zombie-id)))
+    (print "No zombie history")))
+
+(print "")
+(print "Final balance:")
+(print (format "Alice: {} ZMB" [(zombie-coin.get-balance "alice")]))
+(commit-tx)
+
+(print "")
+(print "🎉 Lesson 5 complete! You've mastered:")
+(print "✅ Multi-step transactions (pacts)")
+(print "✅ State management with yield/resume") 
+(print "✅ Multi-party coordination")
+(print "✅ Time-based quest mechanics")
+(print "✅ Complex quest chains")
+(print "✅ Quest rewards and progression")

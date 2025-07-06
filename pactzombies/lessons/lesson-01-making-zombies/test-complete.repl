@@ -1,0 +1,99 @@
+; Test the complete zombie factory with all features
+; ==================================================
+
+(env-data {"zombies-admin": {"keys": ["admin-key"]}})
+(env-keys ["admin-key"])
+
+; Load the complete zombie factory
+(begin-tx)
+(load "zombie-factory-complete.pact")
+(create-table zombies-table)
+(commit-tx)
+
+; Test zombie creation with types and stats
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "alice-key", "caps": []}])
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:00:00Z")})
+
+(print "Creating first zombie...")
+(create-zombie "Zombie Alpha")
+(print "")
+(commit-tx)
+
+; Test cooldown - should fail
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "alice-key", "caps": []}])
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:00:30Z")}) ; 30 seconds later
+
+(print "Trying to create another zombie too soon (should fail)...")
+(expect-failure "Should enforce cooldown"
+  "Please wait 60.0 seconds before creating another zombie"
+  (create-zombie "Zombie Beta"))
+(commit-tx)
+
+; Test successful creation after cooldown
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "alice-key", "caps": []}])
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:01:30Z")}) ; 90 seconds later
+
+(print "Creating zombie after cooldown...")
+(create-zombie "Zombie Beta")
+(print "")
+(commit-tx)
+
+; Create zombies for another user
+(begin-tx)
+(use zombies)
+(env-sigs [{"key": "bob-key", "caps": []}])
+(env-data {"sender": "bob"})
+(env-chain-data {"block-time": (time "2024-01-01T00:02:00Z")})
+
+(print "Bob creating zombies...")
+(create-zombie "Zombie Charlie")
+(print "")
+(commit-tx)
+
+; Check zombie properties and stats
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+
+(print "Alice's zombies:")
+(let ((my-zombies (get-my-zombies)))
+  (map (lambda (z) 
+    (print (format "  {} - Type: {}, Level: {}, STR: {}, SPD: {}" 
+      [(at "name" z) (at "type" z) (at "level" z) (at "strength" z) (at "speed" z)]))) 
+    my-zombies))
+
+(print "")
+(print (format "Alice has {} zombies" [(get-zombie-count "alice")]))
+(print (format "Bob has {} zombies" [(get-zombie-count "bob")]))
+(commit-tx)
+
+; Display all zombie types found
+(begin-tx)
+(use zombies)
+(let ((all-zombies (select zombies-table (constantly true))))
+  (print "")
+  (print "Zombie type distribution:")
+  (let ((types (distinct (map (at "type") all-zombies))))
+    (map (lambda (type) 
+      (let ((count (length (filter (lambda (z) (= type (at "type" z))) all-zombies))))
+        (print (format "  {}: {} zombies" [type count]))))
+      types)))
+(commit-tx)
+
+(print "")
+(print "🎉 Challenge completed! Your zombie factory now includes:")
+(print "✅ Different zombie types (walker, runner, tank, hunter, spitter)")
+(print "✅ Random stats based on DNA and type")
+(print "✅ Cooldown period between zombie creation")
+(print "✅ Helper functions to query zombies")
+(print "")
+(print "Ready for Lesson 2: Teaching zombies to attack!")

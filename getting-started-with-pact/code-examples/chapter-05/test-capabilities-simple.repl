@@ -1,0 +1,97 @@
+;; Simple Test file for Capability Examples
+
+(begin-tx "Setup test environment")
+
+;; Set up test environment with keysets
+(env-data {
+  "admin-keyset": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  },
+  "resource-admin": {
+    "keys": ["resource-admin-key"],
+    "pred": "keys-all"
+  },
+  "super-admin-keyset": {
+    "keys": ["super-admin-key"],
+    "pred": "keys-all"
+  },
+  "module-admin-keyset": {
+    "keys": ["module-admin-key"],
+    "pred": "keys-all"
+  },
+  "user-admin-keyset": {
+    "keys": ["user-admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'admin-keyset (read-keyset "admin-keyset"))
+(define-keyset 'resource-admin (read-keyset "resource-admin"))
+(define-keyset 'super-admin-keyset (read-keyset "super-admin-keyset"))
+(define-keyset 'module-admin-keyset (read-keyset "module-admin-keyset"))
+(define-keyset 'user-admin-keyset (read-keyset "user-admin-keyset"))
+
+;; Load the module
+(load "capability-examples.pact")
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST BASIC CAPABILITIES
+;; ============================================================================
+
+(begin-tx "Test basic capabilities")
+
+;; Test admin function
+(env-keys ["admin-key"])
+(expect "Admin function works"
+  "Admin action performed"
+  (capability-examples.admin-function))
+
+;; Test admin function with wrong key
+(env-keys ["wrong-key"])
+(expect-failure "Admin function fails without proper key"
+  "Keyset failure"
+  (capability-examples.admin-function))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST SCOPED OPERATIONS
+;; ============================================================================
+
+(begin-tx "Test scoped operations")
+
+(env-keys ["resource-admin-key"])
+(expect "Read operation works"
+  "Performed read on file.txt with data {}"
+  (capability-examples.perform-operation "read" "file.txt" "{}"))
+
+(expect "Write operation works"
+  "Performed write on file.txt with data {}"
+  (capability-examples.perform-operation "write" "file.txt" "{}"))
+
+(expect-failure "Invalid operation fails"
+  "Invalid operation"
+  (capability-examples.perform-operation "hack" "file.txt" "{}"))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST HIERARCHICAL CAPABILITIES
+;; ============================================================================
+
+(begin-tx "Test hierarchical capabilities")
+
+;; Test multi-sig function
+(expect "Multi-sig function works"
+  "Multi-signature action performed"
+  (capability-examples.multi-sig-function))
+
+(commit-tx)
+
+(print "Simple capability tests passed!")

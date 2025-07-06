@@ -1,0 +1,241 @@
+;; test-dao.repl
+;; Test file for DAO governance system
+
+;; Load fungible interface and coin
+(env-data { "upgrade": false })
+(load "../../pact-tests/pact-tests/coin-v5/fungible-v2.pact")
+(load "../../pact-tests/pact-tests/coin-v5/coin-v5.pact")
+
+;; Load modules
+(load "governance-token.pact")
+(load "dao-governor.pact")
+
+;; Setup test environment
+(begin-tx "Setup keysets")
+(env-data {
+  "dao-admin": ["admin-key"],
+  "alice": ["alice-key"],
+  "bob": ["bob-key"],
+  "charlie": ["charlie-key"],
+  "coin-keyset": ["admin-key"],
+  "upgrade": false
+})
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'dao-admin (read-keyset 'dao-admin))
+(define-keyset 'alice (read-keyset 'alice))
+(define-keyset 'bob (read-keyset 'bob))
+(define-keyset 'charlie (read-keyset 'charlie))
+(define-keyset 'coin-keyset (read-keyset 'coin-keyset))
+
+(commit-tx)
+
+;; Test 1: Token creation and minting
+(begin-tx "Test token creation")
+(use governance-token)
+
+;; Create accounts
+(env-keys ["alice-key"])
+(create-account "alice" (read-keyset 'alice))
+
+(env-keys ["bob-key"])
+(create-account "bob" (read-keyset 'bob))
+
+(env-keys ["charlie-key"])
+(create-account "charlie" (read-keyset 'charlie))
+
+;; Mint tokens (admin only)
+(env-keys ["admin-key"])
+(mint "alice" 1000000.0)
+(mint "bob" 500000.0)
+(mint "charlie" 100000.0)
+
+;; Test balances
+(expect "Alice balance correct" 1000000.0 (get-balance "alice"))
+(expect "Bob balance correct" 500000.0 (get-balance "bob"))
+(expect "Charlie balance correct" 100000.0 (get-balance "charlie"))
+
+;; Test initial voting power (self-delegated)
+(expect "Alice votes correct" 1000000.0 (get-votes "alice"))
+(expect "Bob votes correct" 500000.0 (get-votes "bob"))
+(expect "Charlie votes correct" 100000.0 (get-votes "charlie"))
+
+(commit-tx)
+
+;; Test 2: Delegation
+(begin-tx "Test delegation")
+(use governance-token)
+
+;; Alice delegates to Bob
+(env-keys ["alice-key"])
+(delegate "alice" "bob")
+
+;; Check voting power changed
+(expect "Alice has no votes after delegation" 0.0 (get-votes "alice"))
+(expect "Bob has combined votes" 1500000.0 (get-votes "bob"))
+
+;; Check delegation record
+(expect "Delegation recorded" "bob" (get-delegates "alice"))
+
+(commit-tx)
+
+;; Test 3: Proposal creation
+(begin-tx "Test proposal creation")
+(use dao-governor)
+
+;; Bob can propose (has enough voting power)
+(env-keys ["bob-key"])
+(env-chain-data { "block-height": 100, "block-time": (time "2024-01-01T00:00:00Z") })
+
+(let ((result (propose 
+        "bob"
+        "Increase Treasury Budget"
+        "Proposal to increase development budget by 50%"
+        ["treasury"]
+        [0.0]
+        ["set-budget"]
+        ["development:coin:1000000.0:90"])))
+  (expect "Proposal created successfully" true (contains "Proposal" result)))
+
+;; Charlie cannot propose (insufficient voting power)
+(env-keys ["charlie-key"])
+(expect-failure "Charlie cannot propose"
+  "Insufficient voting power"
+  (propose 
+    "charlie"
+    "Bad Proposal"
+    "Should fail"
+    ["test"]
+    [0.0]
+    ["test"]
+    ["test"]))
+
+(commit-tx)
+
+;; Test 4: Voting
+(begin-tx "Test voting")
+(use dao-governor)
+
+;; Set block height to voting period
+(env-chain-data { "block-height": 102, "block-time": (time "2024-01-01T01:00:00Z") })
+
+;; Get proposal ID (in real scenario, this would be known)
+(let ((proposals (get-active-proposals)))
+  (expect "One active proposal" 1 (length proposals))
+  (let ((proposal-id (at 'id (at 0 proposals))))
+    
+    ;; Bob votes for
+    (env-keys ["bob-key"])
+    (cast-vote-with-reason proposal-id "bob" 1 "I support this proposal")
+    
+    ;; Charlie votes against
+    (env-keys ["charlie-key"])
+    (cast-vote proposal-id "charlie" 0)
+    
+    ;; Check votes recorded
+    (expect "Bob voted for" true (has-voted proposal-id "bob"))
+    (expect "Charlie voted against" true (has-voted proposal-id "charlie"))
+    
+    ;; Check vote counts
+    (let ((proposal (get-proposal proposal-id)))
+      (expect "For votes correct" 1500000.0 (at 'for-votes proposal))
+      (expect "Against votes correct" 100000.0 (at 'against-votes proposal))
+      (expect "Proposal should succeed" true (proposal-succeeded proposal-id)))))
+
+(commit-tx)
+
+;; Test 5: Double voting prevention
+(begin-tx "Test double voting prevention")
+(use dao-governor)
+
+(env-chain-data { "block-height": 103, "block-time": (time "2024-01-01T02:00:00Z") })
+
+(let ((proposals (get-active-proposals)))
+  (let ((proposal-id (at 'id (at 0 proposals))))
+    
+    ;; Try to vote again (should fail)
+    (env-keys ["bob-key"])
+    (expect-failure "Cannot vote twice"
+      "Already voted"
+      (cast-vote proposal-id "bob" 0))))
+
+(commit-tx)
+
+;; Test 6: Transfer with delegation
+(begin-tx "Test transfer with delegation")
+(use governance-token)
+
+;; Charlie transfers tokens to Alice
+(env-keys ["charlie-key"])
+(transfer "charlie" "alice" 50000.0)
+
+;; Check balances
+(expect "Charlie balance reduced" 50000.0 (get-balance "charlie"))
+(expect "Alice balance increased" 1050000.0 (get-balance "alice"))
+
+;; Voting power should move according to delegation
+;; Alice is delegated to Bob, so Bob's voting power should increase
+(expect "Bob votes increased" 1550000.0 (get-votes "bob"))
+(expect "Charlie votes decreased" 50000.0 (get-votes "charlie"))
+
+(commit-tx)
+
+;; Test 7: Proposal states
+(begin-tx "Test proposal states")
+(use dao-governor)
+
+;; Move past voting period
+(env-chain-data { "block-height": 200000, "block-time": (time "2024-01-10T00:00:00Z") })
+
+(let ((proposals (select proposals (constantly true))))
+  (let ((proposal-id (at 'id (at 0 proposals))))
+    
+    ;; Check proposal succeeded
+    (expect "Proposal succeeded" "Succeeded" (get-proposal-state proposal-id))
+    
+    ;; Execute proposal (after timelock)
+    (env-chain-data { "block-height": 200000, "block-time": (time "2024-01-12T00:00:00Z") })
+    (env-keys ["admin-key"])
+    (execute proposal-id)
+    
+    ;; Check proposal executed
+    (expect "Proposal executed" "Executed" (get-proposal-state proposal-id))))
+
+(commit-tx)
+
+;; Test 8: Quorum calculation
+(begin-tx "Test quorum")
+(use dao-governor)
+
+;; Check quorum calculation
+(let ((total-supply (governance-token.total-supply))
+      (quorum (quorum-votes)))
+  (expect "Quorum is 4% of total supply" (* 0.04 total-supply) quorum))
+
+(commit-tx)
+
+;; Test 9: Edge cases
+(begin-tx "Test edge cases")
+(use governance-token)
+(use dao-governor)
+
+;; Test self-delegation (should be no-op)
+(env-keys ["charlie-key"])
+(expect-failure "Cannot delegate to current delegate"
+  "Already delegated to this address"
+  (delegate "charlie" "charlie"))
+
+;; Test zero amount transfer
+(expect-failure "Cannot transfer zero"
+  "Amount must be positive"
+  (transfer "charlie" "alice" 0.0))
+
+;; Test transfer to self
+(expect-failure "Cannot transfer to self"
+  "Cannot transfer to self"
+  (transfer "charlie" "charlie" 1000.0))
+
+(commit-tx)
+
+(print "All DAO governance tests passed!")

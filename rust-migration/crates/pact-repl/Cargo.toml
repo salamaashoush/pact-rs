@@ -1,0 +1,26 @@
+[package]
+name = "pact-repl"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Interactive REPL for the Pact smart contract language"
+
+[[bin]]
+name = "pact-repl"
+path = "src/main.rs"
+[dependencies]
+pact-core = { path = "../pact-core" }
+pact-syntax = { path = "../pact-syntax" }
+pact-compiler = { path = "../pact-compiler" }
+pact-cek = { path = "../pact-cek" }
+pact-ir = { path = "../pact-ir" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+rustyline = "14.0"
+colored = "2.0"
+[dev-dependencies]
+proptest = { workspace = true }

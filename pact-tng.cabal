@@ -219,6 +219,7 @@ library
     Pact.Core.Hash
     Pact.Core.Type
     Pact.Core.Pretty
+    Pact.Core.Formatter
     Pact.Core.Gas
     Pact.Core.Gas.Types
     Pact.Core.Gas.TableGasModel
@@ -352,8 +353,20 @@ library pact-lsp
 
   exposed-modules:
     Pact.Core.LanguageServer
+    Pact.Core.LanguageServer.Types
     Pact.Core.LanguageServer.Utils
     Pact.Core.LanguageServer.Renaming
+    Pact.Core.LanguageServer.Completion
+    Pact.Core.LanguageServer.SignatureHelp
+    Pact.Core.LanguageServer.References
+    Pact.Core.LanguageServer.Formatting
+    Pact.Core.LanguageServer.DocumentSymbols
+    Pact.Core.LanguageServer.WorkspaceSymbols
+    Pact.Core.LanguageServer.DocumentHighlights
+    Pact.Core.LanguageServer.CodeActions
+    Pact.Core.LanguageServer.SemanticTokens
+    Pact.Core.LanguageServer.InlayHints
+    Pact.Core.LanguageServer.CodeLens
 
   build-depends:
     , pact-tng
@@ -427,6 +440,18 @@ executable pact
     -- and stops crapping out both LSP and our CI,
     -- PackageInfo_pact_tng
     Paths_pact_tng
+
+executable test-formatter
+  import: pact-common
+  main-is: TestFormatter.hs
+  hs-source-dirs: app
+
+  build-depends: base
+               , pact-tng
+               , text
+
+  ghc-options:         -Wall -threaded -rtsopts -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-language:    Haskell2010
 
 benchmark bench
   type: exitcode-stdio-1.0

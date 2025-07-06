@@ -428,7 +428,7 @@ The system validates implementations by checking:
     (log-access key "STORE" (tx-sender))
     
     ;; Store in primary storage
-    (insert primary-storage key { "value": value, "stored": (chain-data 'time) })
+    (insert primary-storage key { "value": value, "stored": (at 'block-time (chain-data)) })
     
     ;; Update cache
     (cache-set key value 3600)  ;; 1 hour TTL

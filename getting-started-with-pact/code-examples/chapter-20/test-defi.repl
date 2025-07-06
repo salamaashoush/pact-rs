@@ -1,0 +1,268 @@
+;; test-defi.repl
+;; Test DeFi lending protocol functionality
+
+(begin-tx "Setup environment")
+
+(env-data {
+  "defi-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  },
+  "alice-keyset": {
+    "keys": ["alice-key"],
+    "pred": "keys-all"
+  },
+  "bob-keyset": {
+    "keys": ["bob-key"],
+    "pred": "keys-all"
+  },
+  "liquidator-keyset": {
+    "keys": ["liquidator-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'defi-admin (read-keyset "defi-admin"))
+(define-keyset 'alice-keyset (read-keyset "alice-keyset"))
+(define-keyset 'bob-keyset (read-keyset "bob-keyset"))
+(define-keyset 'liquidator-keyset (read-keyset "liquidator-keyset"))
+
+;; Mock coin module for account guards
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defschema account
+    balance:decimal
+    guard:guard)
+  
+  (deftable accounts:{account})
+  
+  (defun details:object (account:string)
+    (cond 
+      ((= account "alice") 
+       { "account": account
+       , "balance": 10000.0
+       , "guard": (read-keyset "alice-keyset") })
+      ((= account "bob")
+       { "account": account
+       , "balance": 5000.0
+       , "guard": (read-keyset "bob-keyset") })
+      ((= account "liquidator")
+       { "account": account
+       , "balance": 20000.0
+       , "guard": (read-keyset "liquidator-keyset") })
+      (true 
+       { "account": account
+       , "balance": 0.0
+       , "guard": (read-keyset "alice-keyset") })))
+)
+(create-table accounts)
+
+;; Load DeFi modules
+(load "defi-token.pact")
+(load "lending-pool.pact")
+(load "liquidation.pact")
+
+;; Initialize defi-token
+(defi-token.init)
+
+(commit-tx)
+
+;; Configure Assets
+(begin-tx "Configure protocol assets")
+
+(env-keys ["admin-key"])
+
+;; Add ETH as collateral
+(expect "ETH added"
+  "Asset ETH added"
+  (lending-pool.add-asset "ETH" 0.75 0.80 0.05 2000.0))
+
+;; Add USDC for borrowing
+(expect "USDC added"
+  "Asset USDC added"
+  (lending-pool.add-asset "USDC" 0.80 0.85 0.025 1.0))
+
+;; Add KDA as collateral
+(expect "KDA added"
+  "Asset KDA added"
+  (lending-pool.add-asset "KDA" 0.65 0.70 0.10 0.50))
+
+(commit-tx)
+
+;; Test Deposits
+(begin-tx "Test deposits")
+
+(env-keys ["alice-key"])
+(env-data { "user-ks": { "keys": ["alice-key"], "pred": "keys-all" }})
+
+;; Alice deposits 5 ETH
+(expect "Alice deposit ETH"
+  "Deposited 5.0 ETH"
+  (lending-pool.deposit "alice" "ETH" 5.0))
+
+;; Check Alice's aToken balance
+(expect "Alice has aTokens"
+  5.0
+  (defi-token.get-balance "alice"))
+
+;; Bob deposits 10000 USDC
+(env-keys ["bob-key"])
+(env-data { "user-ks": { "keys": ["bob-key"], "pred": "keys-all" }})
+
+(expect "Bob deposit USDC"
+  "Deposited 10000.0 USDC"
+  (lending-pool.deposit "bob" "USDC" 10000.0))
+
+(commit-tx)
+
+;; Test Borrowing
+(begin-tx "Test borrowing")
+
+(env-keys ["alice-key"])
+
+;; Alice borrows 5000 USDC against ETH collateral
+;; ETH price: $2000, 5 ETH = $10,000 collateral
+;; With 75% LTV, can borrow up to $7,500
+(expect "Alice borrows USDC"
+  "Borrowed 5000.0 USDC"
+  (lending-pool.borrow "alice" "USDC" 5000.0))
+
+;; Check Alice's debt
+(expect "Alice has debt"
+  5000.0
+  (lending-pool.get-user-debt "alice" "USDC"))
+
+;; Check Alice's health factor
+;; Collateral: $10,000 * 0.80 threshold = $8,000
+;; Debt: $5,000
+;; Health factor: $8,000 / $5,000 = 1.6
+(expect "Alice health factor > 1"
+  true
+  (> (lending-pool.get-health-factor "alice") 1.0))
+
+(commit-tx)
+
+;; Test Repayment
+(begin-tx "Test repayment")
+
+(env-keys ["alice-key"])
+
+;; Alice repays 1000 USDC
+(expect "Alice repays partial"
+  "Repaid 1000.0 USDC"
+  (lending-pool.repay "alice" "USDC" 1000.0))
+
+;; Check remaining debt
+(expect "Alice debt reduced"
+  4000.0
+  (lending-pool.get-user-debt "alice" "USDC"))
+
+(commit-tx)
+
+;; Test Interest Accrual
+(begin-tx "Test interest rates")
+
+(env-keys ["admin-key"])
+
+;; Set interest rates: 8% borrow, 60% utilization
+(expect "Rates updated"
+  "Rates updated: borrow=0.08, supply=0.0432"
+  (defi-token.set-interest-rates 0.08 0.60))
+
+;; Check supply APY
+(expect "Supply APY"
+  0.0432
+  (defi-token.get-supply-apy))
+
+(commit-tx)
+
+;; Test Liquidation Scenario
+(begin-tx "Setup liquidation scenario")
+
+(env-keys ["admin-key"])
+
+;; Simulate ETH price drop to $1200
+;; Alice's collateral: 5 ETH * $1200 = $6,000
+;; Alice's debt: $4,000
+;; Health factor: ($6,000 * 0.80) / $4,000 = 1.2 (still healthy)
+
+;; Further drop to $900
+(update lending-pool.asset-config "ETH" { "price": 900.0 })
+
+;; Now: 5 ETH * $900 = $4,500 collateral
+;; Health factor: ($4,500 * 0.80) / $4,000 = 0.9 (unhealthy!)
+
+(commit-tx)
+
+;; Execute Liquidation
+(begin-tx "Test liquidation")
+
+(env-keys ["liquidator-key"])
+(env-data { "user-ks": { "keys": ["liquidator-key"], "pred": "keys-all" }})
+
+;; Create liquidator account
+(defi-token.create-account "liquidator" (read-keyset "liquidator-keyset"))
+
+;; Liquidator liquidates 50% of Alice's debt (max allowed)
+(expect "Liquidation executed"
+  true
+  (contains "liquidation-id" 
+    (liquidation.liquidate-position 
+      "liquidator" "alice" "ETH" "USDC" 2000.0)))
+
+;; Check Alice's remaining debt
+(expect "Alice debt reduced"
+  2000.0
+  (lending-pool.get-user-debt "alice" "USDC"))
+
+;; Check liquidator received collateral with bonus
+;; Liquidated $2000 debt, ETH price $900
+;; Base collateral: $2000 / $900 = 2.22 ETH
+;; With 5% bonus: 2.22 * 1.05 = 2.33 ETH
+
+(commit-tx)
+
+;; Test Withdrawal
+(begin-tx "Test withdrawal")
+
+(env-keys ["bob-key"])
+
+;; Bob withdraws some USDC
+(expect "Bob withdraws"
+  "Burned 5000.0 tokens from bob"
+  (defi-token.burn "bob" 5000.0))
+
+(expect "Bob balance reduced"
+  5000.0
+  (defi-token.get-balance "bob"))
+
+(commit-tx)
+
+;; Query Functions
+(begin-tx "Test query functions")
+
+;; Find liquidation opportunities
+(let ((opportunities (liquidation.find-liquidation-opportunities)))
+  (expect "Found liquidatable positions"
+    true
+    (> (length opportunities) 0)))
+
+;; Get liquidation history
+(let ((history (liquidation.get-liquidation-history "alice")))
+  (expect "Alice was liquidated"
+    1
+    (length history)))
+
+;; Get liquidator stats
+(let ((stats (liquidation.get-liquidator-stats "liquidator")))
+  (expect "Liquidator stats"
+    1
+    (at 'total-liquidations stats)))
+
+(commit-tx)
+
+(print "All DeFi tests passed!")

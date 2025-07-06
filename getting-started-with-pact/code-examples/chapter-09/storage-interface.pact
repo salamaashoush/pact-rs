@@ -24,7 +24,7 @@
   (defun store-batch:string (entries:[object])
     @doc "Store multiple key-value pairs")
 
-  (defun retrieve-batch:[object] (keys:[string])
+  (defun retrieve-batch:[object] (key-list:[string])
     @doc "Retrieve multiple values by keys")
 
   ;; Storage schema
@@ -91,7 +91,7 @@
   ;; Core operations
   (defun store:string (key:string value:object)
     (with-capability (STORE_DATA key)
-      (let ((now (chain-data 'time)))
+      (let ((now (at 'block-time (chain-data))))
         (write storage-data key {
           "key": key,
           "value": value,
@@ -127,8 +127,8 @@
            entries)
       "Batch store completed"))
 
-  (defun retrieve-batch:[object] (keys:[string])
-    (map retrieve keys))
+  (defun retrieve-batch:[object] (key-list:[string])
+    (map retrieve key-list))
 
   ;; Metadata operations
   (defun get-metadata:object (key:string)
@@ -182,40 +182,38 @@
   ;; Core operations
   (defun store:string (key:string value:object)
     (with-capability (STORE_DATA key)
-      (let ((current-data (get-all-data))
-            (updated-data (+ current-data { key: value })))
-        (set-all-data updated-data)
-        "Data stored in memory")))
+      ;; For simplicity, store each key-value pair as a separate record
+      (write memory-data key { "value": value })
+      "Data stored in memory"))
 
   (defun retrieve:object (key:string)
     (with-capability (RETRIEVE_DATA key)
-      (at key (get-all-data))))
+      (at "value" (read memory-data key))))
 
   (defun exists:bool (key:string)
-    (contains key (get-all-data)))
+    (with-default-read memory-data key
+      { "value": {} }
+      { "value" := val }
+      (!= val {})))
 
   (defun delete:string (key:string)
     (with-capability (STORAGE_ADMIN)
-      (let ((current-data (get-all-data)))
-        (enforce (contains key current-data) "key not found")
-        (set-all-data (- current-data [key]))
+      (with-read memory-data key { "value" := val }
+        (update memory-data key { "value": {} })
         "Data deleted from memory")))
 
   (defun list-keys:[string] ()
-    (keys (get-all-data)))
+    (keys memory-data))
 
   (defun store-batch:string (entries:[object])
     (with-capability (STORAGE_ADMIN)
-      (let ((current-data (get-all-data))
-            (new-entries (fold (lambda (acc entry)
-                                 (+ acc { (at 'key entry): (at 'value entry) }))
-                               {}
-                               entries)))
-        (set-all-data (+ current-data new-entries))
-        "Batch stored in memory")))
+      (map (lambda (entry)
+             (store (at 'key entry) (at 'value entry)))
+           entries)
+      "Batch stored in memory"))
 
-  (defun retrieve-batch:[object] (keys:[string])
-    (map retrieve keys))
+  (defun retrieve-batch:[object] (key-list:[string])
+    (map retrieve key-list))
 
   ;; Clear all data (testing only)
   (defun clear-all:string ()

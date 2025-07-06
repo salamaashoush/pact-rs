@@ -1,0 +1,227 @@
+;; Test file for Capability Examples
+
+(begin-tx "Setup test environment")
+
+;; Set up test environment with keysets
+(env-data {
+  "admin-keyset": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  },
+  "super-admin-keyset": {
+    "keys": ["super-admin-key"],
+    "pred": "keys-all"
+  },
+  "module-admin-keyset": {
+    "keys": ["module-admin-key"],
+    "pred": "keys-all"
+  },
+  "user-admin-keyset": {
+    "keys": ["user-admin-key"],
+    "pred": "keys-all"
+  },
+  "resource-admin": {
+    "keys": ["resource-admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'admin-keyset (read-keyset "admin-keyset"))
+(define-keyset 'super-admin-keyset (read-keyset "super-admin-keyset"))
+(define-keyset 'module-admin-keyset (read-keyset "module-admin-keyset"))
+(define-keyset 'user-admin-keyset (read-keyset "user-admin-keyset"))
+(define-keyset 'resource-admin (read-keyset "resource-admin"))
+
+;; Load the module
+(load "capability-examples.pact")
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST BASIC CAPABILITIES
+;; ============================================================================
+
+(begin-tx "Test basic capabilities")
+
+;; Test admin function
+(env-keys ["admin-key"])
+(expect "Admin function works"
+  "Admin action performed"
+  (capability-examples.admin-function))
+
+;; Test admin function with wrong key
+(env-keys ["wrong-key"])
+(expect-failure "Admin function fails without proper key"
+  "Keyset failure"
+  (capability-examples.admin-function))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ACCOUNT MANAGEMENT AND TRANSFERS
+;; ============================================================================
+
+(begin-tx "Test account management")
+
+;; Create accounts
+(env-data {
+  "alice-guard": {
+    "keys": ["alice-key"],
+    "pred": "keys-all"
+  },
+  "bob-guard": {
+    "keys": ["bob-key"],
+    "pred": "keys-all"
+  }
+})
+
+(expect "Create Alice account"
+  "Account alice created"
+  (capability-examples.create-account "alice" (read-keyset "alice-guard")))
+
+(expect "Create Bob account"
+  "Account bob created"
+  (capability-examples.create-account "bob" (read-keyset "bob-guard")))
+
+;; Test balances
+(expect "Alice initial balance"
+  0.0
+  (capability-examples.get-balance "alice"))
+
+;; Set up some balances for testing
+(env-keys ["admin-key"])
+(env-data {
+  "admin-keyset": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  },
+  "alice-guard": {
+    "keys": ["alice-key"],
+    "pred": "keys-all"
+  }
+})
+(capability-examples.create-account "admin" (read-keyset "admin-keyset"))
+(test-capability (capability-examples.TRANSFER "admin" "alice" 100.0))
+(capability-examples.transfer-create "admin" "alice" (read-keyset "alice-guard") 100.0)
+
+(expect "Alice balance after funding"
+  100.0
+  (capability-examples.get-balance "alice"))
+
+;; Test transfer
+(env-keys ["alice-key"])
+(expect-failure "Transfer without capability fails"
+  "require-capability"
+  (capability-examples.transfer "alice" "bob" 25.0))
+
+(test-capability (capability-examples.TRANSFER "alice" "bob" 25.0))
+(expect "Transfer works"
+  25.0
+  (capability-examples.transfer "alice" "bob" 25.0))
+
+(expect "Alice balance after transfer"
+  75.0
+  (capability-examples.get-balance "alice"))
+
+(expect "Bob balance after transfer"
+  25.0
+  (capability-examples.get-balance "bob"))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST MANAGED CAPABILITIES
+;; ============================================================================
+
+(begin-tx "Test managed capabilities")
+
+;; Test that managed capability tracks spending
+(env-keys ["alice-key"])
+(test-capability (capability-examples.TRANSFER "alice" "bob" 50.0))
+
+;; First transfer should work
+(expect "First managed transfer"
+  20.0
+  (capability-examples.transfer "alice" "bob" 20.0))
+
+;; Second transfer should work (30 remaining)
+(expect "Second managed transfer"
+  20.0
+  (capability-examples.transfer "alice" "bob" 20.0))
+
+;; Third transfer should fail (only 10 remaining)
+(expect-failure "Exceeding managed amount fails"
+  "Insufficient transfer allowance"
+  (capability-examples.transfer "alice" "bob" 15.0))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST EVENT CAPABILITIES
+;; ============================================================================
+
+(begin-tx "Test event capabilities")
+
+(env-keys ["alice-key"])
+(test-capability (capability-examples.TRANSFER "alice" "bob" 10.0))
+
+;; This should emit an event
+(expect "Transfer with event"
+  10.0
+  (capability-examples.transfer-with-event "alice" "bob" 10.0))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST AUTONOMOUS CAPABILITIES
+;; ============================================================================
+
+(begin-tx "Test autonomous capabilities")
+
+;; Create test account for rotation
+(env-data {
+  "test-guard": {
+    "keys": ["test-key"],
+    "pred": "keys-all"
+  },
+  "new-guard": {
+    "keys": ["new-key"],
+    "pred": "keys-all"
+  }
+})
+
+(capability-examples.create-account "test-account" (read-keyset "test-guard"))
+
+;; Test rotation
+(env-keys ["test-key"])
+(test-capability (capability-examples.ROTATE "test-account"))
+(capability-examples.rotate-guard "test-account" (read-keyset "new-guard"))
+
+;; Try to rotate again - should fail (autonomous capability)
+(expect-failure "Second rotation fails"
+  "Autonomous capability already granted"
+  (capability-examples.rotate-guard "test-account" (read-keyset "test-guard")))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST SCOPED OPERATIONS
+;; ============================================================================
+
+(begin-tx "Test scoped operations")
+
+(env-keys ["resource-admin-key"])
+(expect "Read operation works"
+  "Performed read on file.txt with data {}"
+  (capability-examples.perform-operation "read" "file.txt" "{}"))
+
+(expect-failure "Invalid operation fails"
+  "Invalid operation"
+  (capability-examples.perform-operation "hack" "file.txt" "{}"))
+
+(commit-tx)
+
+(print "All capability tests passed!")

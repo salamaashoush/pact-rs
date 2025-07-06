@@ -1,0 +1,92 @@
+;; Test file for Chapter 4: Basic Module Example
+
+(begin-tx "Setup test environment")
+
+;; Set up test environment with keyset
+(env-data {
+  "token-admin": ["admin-key"]
+})
+
+(env-keys ["admin-key"])
+
+;; Define the keyset
+(define-keyset 'token-admin (read-keyset "token-admin"))
+
+;; Load the module
+(load "basic-module.pact")
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST BASIC MODULE FUNCTIONALITY
+;; ============================================================================
+
+(begin-tx "Test module functions")
+
+;; Test account creation
+(expect "Account creation works"
+  "Account alice created"
+  (simple-token.create-account "alice" (keyset-ref-guard 'token-admin)))
+
+;; Test balance checking
+(expect "Initial balance is zero"
+  0.0
+  (simple-token.get-balance "alice"))
+
+;; Test minting (admin only)
+(expect "Minting works"
+  "Minted 100.0 tokens to alice"
+  (simple-token.mint "alice" (keyset-ref-guard 'token-admin) 100.0))
+
+;; Check balance after minting
+(expect "Balance after minting"
+  100.0
+  (simple-token.get-balance "alice"))
+
+;; Create second account for transfer test
+(expect "Bob account creation works"
+  "Account bob created"
+  (simple-token.create-account "bob" (keyset-ref-guard 'token-admin)))
+
+;; Test transfer
+(env-keys ["admin-key"]) ; Alice uses admin guard for simplicity
+(expect "Transfer works"
+  "Transferred 30.0 from alice to bob"
+  (simple-token.transfer "alice" "bob" 30.0))
+
+;; Test transfer-create to new account
+(expect "Transfer-create works"
+  "Transferred 10.0 from alice to carol"
+  (simple-token.transfer-create "alice" "carol" (keyset-ref-guard 'token-admin) 10.0))
+
+;; Check balances after transfer
+(expect "Alice balance after transfer"
+  70.0
+  (simple-token.get-balance "alice"))
+
+(expect "Bob balance after transfer"
+  30.0
+  (simple-token.get-balance "bob"))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ERROR CONDITIONS
+;; ============================================================================
+
+(begin-tx "Test error conditions")
+
+;; Test insufficient balance
+(expect-failure "Insufficient balance rejected"
+  "Insufficient balance"
+  (simple-token.transfer "alice" "bob" 100.0))
+
+;; Test unauthorized minting
+(env-keys [])
+(expect-failure "Unauthorized minting fails"
+  "keyset failure"
+  (simple-token.mint "alice" (keyset-ref-guard 'token-admin) 50.0))
+
+(commit-tx)
+
+(print "All basic module tests passed!")

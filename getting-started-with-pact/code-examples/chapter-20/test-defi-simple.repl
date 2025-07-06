@@ -1,0 +1,141 @@
+;; test-defi-simple.repl
+;; Simplified test for core DeFi functionality
+
+(begin-tx "Setup")
+
+(env-data {
+  "defi-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+(define-keyset 'defi-admin (read-keyset "defi-admin"))
+
+;; Mock coin module
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defun details:object (account:string)
+    { "account": account
+    , "balance": 10000.0
+    , "guard": (read-keyset "defi-admin") })
+)
+
+;; Load modules
+(load "defi-token.pact")
+(load "yield-farming.pact")
+
+;; Initialize
+(defi-token.init)
+
+(commit-tx)
+
+;; Test Basic Token Operations
+(begin-tx "Test token operations")
+
+(env-data { "user-ks": { "keys": ["admin-key"], "pred": "keys-all" }})
+
+;; Create account
+(expect "Account created"
+  "Account alice created"
+  (defi-token.create-account "alice" (read-keyset "user-ks")))
+
+;; Mint tokens (deposit)
+(expect "Mint tokens"
+  "Minted 1000.0 tokens to alice"
+  (defi-token.mint "alice" (read-keyset "user-ks") 1000.0))
+
+;; Check balance
+(expect "Balance correct"
+  1000.0
+  (defi-token.get-balance "alice"))
+
+;; Create another account
+(defi-token.create-account "bob" (read-keyset "user-ks"))
+
+;; Transfer tokens
+(expect "Transfer succeeds"
+  "Transferred 100.0 from alice to bob"
+  (defi-token.transfer "alice" "bob" 100.0))
+
+;; Check balances
+(expect "Alice balance"
+  900.0
+  (defi-token.get-balance "alice"))
+
+(expect "Bob balance"
+  100.0
+  (defi-token.get-balance "bob"))
+
+(commit-tx)
+
+;; Test Yield Farming
+(begin-tx "Test yield farming")
+
+;; Create farming pool (30 day duration)
+(expect "Pool created"
+  "Pool DEFI-REWARDS created"
+  (yield-farming.create-pool 
+    "DEFI-REWARDS" 
+    "aToken" 
+    "REWARD" 
+    0.1        ;; 0.1 tokens per second
+    2592000))  ;; 30 days in seconds
+
+;; Alice stakes tokens
+(expect "Stake succeeds"
+  "Staked 500.0 tokens"
+  (yield-farming.stake "alice" "DEFI-REWARDS" 500.0))
+
+;; Check pending rewards (should be 0 initially)
+(expect "Initial rewards"
+  0.0
+  (yield-farming.get-pending-rewards "alice" "DEFI-REWARDS"))
+
+;; Bob stakes tokens
+(expect "Bob stakes"
+  "Staked 100.0 tokens"
+  (yield-farming.stake "bob" "DEFI-REWARDS" 100.0))
+
+;; Get pool info
+(let ((pool-info (yield-farming.get-pool-info "DEFI-REWARDS")))
+  (expect "Total staked"
+    600.0
+    (at 'total-staked pool-info)))
+
+;; Alice unstakes partial
+(expect "Partial unstake"
+  "Unstaked 200.0 tokens"
+  (yield-farming.unstake "alice" "DEFI-REWARDS" 200.0))
+
+;; Check Alice's remaining stake
+(let ((stake-info (yield-farming.get-user-stake "alice" "DEFI-REWARDS")))
+  (expect "Remaining stake"
+    300.0
+    (at 'amount stake-info)))
+
+(commit-tx)
+
+;; Test Interest Rates
+(begin-tx "Test interest rates")
+
+;; Set interest rates
+(expect "Rates set"
+  "Rates updated: borrow=0.1, supply=0.072"
+  (defi-token.set-interest-rates 0.1 0.8))
+
+;; Check supply APY
+(expect "Supply APY"
+  0.072
+  (defi-token.get-supply-apy))
+
+;; Update indexes (simulates time passing)
+(expect "Indexes updated"
+  "No update needed"
+  (defi-token.update-interest-indexes))
+
+(commit-tx)
+
+(print "Simple DeFi tests passed!")

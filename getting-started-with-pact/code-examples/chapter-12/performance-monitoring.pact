@@ -62,26 +62,26 @@
         { "operation": operation-name,
           "iterations": iterations,
           "gas-stats": {
-            "min": (fold min 999999999.0 gas-measurements),
-            "max": (fold max 0.0 gas-measurements),
+            "min": (fold (lambda (a b) (if (< a b) a b)) 999999999.0 gas-measurements),
+            "max": (fold (lambda (a b) (if (> a b) a b)) 0.0 gas-measurements),
             "avg": (/ (fold (+) 0.0 gas-measurements) iterations),
             "total": (fold (+) 0.0 gas-measurements)
           },
           "time-stats": {
-            "min": (fold min 999999999.0 time-measurements),
-            "max": (fold max 0.0 time-measurements),
+            "min": (fold (lambda (a b) (if (< a b) a b)) 999999999.0 time-measurements),
+            "max": (fold (lambda (a b) (if (> a b) a b)) 0.0 time-measurements),
             "avg": (/ (fold (+) 0.0 time-measurements) iterations)
           },
           "measurements": measurements })))
   
   (defun measure-single-execution:object (operation-name:string operation-func input-data:object)
     @doc "Measure single operation execution"
-    (let ((start-time (chain-data 'time))
+    (let ((start-time (at 'block-time (chain-data)))
           (start-block (chain-data 'block-height)))
       
       ;; Execute operation (in real implementation, this would call the actual function)
       (let ((result (execute-operation operation-func input-data)))
-        (let ((end-time (chain-data 'time))
+        (let ((end-time (at 'block-time (chain-data)))
               (end-block (chain-data 'block-height)))
           
           { "operation": operation-name,
@@ -145,13 +145,13 @@
                      results)))
           
           ;; Store benchmark result
-          (let ((benchmark-id (hash [test-name (chain-data 'time)])))
+          (let ((benchmark-id (hash [test-name (at 'block-time (chain-data))])))
             (insert benchmark-results benchmark-id {
               "test-name": test-name,
               "implementations": results-with-improvement,
               "winner": (at 'name best),
               "improvement-factor": (/ (at 'avg-gas (at 1 results)) best-gas),
-              "timestamp": (chain-data 'time)
+              "timestamp": (at 'block-time (chain-data))
             })
             
             { "benchmark-id": benchmark-id,
@@ -171,8 +171,8 @@
       
       (let ((new-count (+ count 1))
             (new-total (+ total gas-consumed))
-            (new-min (min min-gas gas-consumed))
-            (new-max (max max-gas gas-consumed))
+            (new-min (if (< gas-consumed min-gas) gas-consumed min-gas))
+            (new-max (if (> gas-consumed max-gas) gas-consumed max-gas))
             (new-avg (/ new-total new-count)))
         
         (write gas-profiles operation-type {
@@ -182,7 +182,7 @@
           "avg-gas": new-avg,
           "total-executions": new-count,
           "total-gas": new-total,
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         }))))
   
   (defun get-gas-profile:object (operation-type:string)
@@ -326,7 +326,7 @@
           "total-tests": total-tests,
           "total-gas-consumed": total-gas,
           "average-gas-per-test": avg-gas,
-          "generated-at": (chain-data 'time)
+          "generated-at": (at 'block-time (chain-data))
         },
         "bottlenecks": (analyze-performance-bottlenecks test-results),
         "detailed-results": test-results,
@@ -394,9 +394,9 @@
     @doc "Get benchmark history for specific test"
     (select benchmark-results (where 'test-name (= test-name))))
   
-  (defun get-recent-metrics:[object] (hours:integer)
+  (defun get-recent-metrics:[object] (hour-count:integer)
     @doc "Get performance metrics from last N hours"
-    (let ((cutoff-time (add-time (chain-data 'time) (hours (- 0 hours)))))
+    (let ((cutoff-time (add-time (at 'block-time (chain-data)) (hours (- 0 hour-count)))))
       (select performance-metrics (where 'timestamp (> cutoff-time)))))
 )
 

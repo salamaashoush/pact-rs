@@ -5,14 +5,17 @@
 
 ;; Setup test environment
 (env-data {
-  "admin": ["admin-key"],
-  "alice": ["alice-key"],
-  "bob": ["bob-key"],
-  "default-guard": { "keys": ["default-key"], "pred": "keys-all" },
-  "to-guard": { "keys": ["bob-key"], "pred": "keys-all" }
+  "admin": ["admin"],
+  "alice": ["alice"], 
+  "bob": ["bob"],
+  "default-guard": { "keys": ["default"], "pred": "keys-all" },
+  "to-guard": { "keys": ["bob"], "pred": "keys-all" }
 })
 
-(env-keys ["admin-key"])
+(env-keys ["admin"])
+
+;; Define keysets
+(define-keyset 'admin (read-keyset "admin"))
 
 ;; Load gas optimization modules
 (load "gas-optimization-examples.pact")
@@ -25,27 +28,7 @@
 (use gas-optimization-examples)
 (use performance-monitoring)
 
-;; Create test accounts
-(insert accounts "alice" {
-  "balance": 1000.0,
-  "guard": (read-keyset "alice"),
-  "status": "active",
-  "last-update": (chain-data 'time)
-})
-
-(insert accounts "bob" {
-  "balance": 500.0,
-  "guard": (read-keyset "bob"),
-  "status": "active", 
-  "last-update": (chain-data 'time)
-})
-
-(insert accounts "charlie" {
-  "balance": 250.0,
-  "guard": (read-keyset "default-guard"),
-  "status": "active",
-  "last-update": (chain-data 'time)
-})
+;; Test gas optimization functions directly
 
 (commit-tx)
 
@@ -61,11 +44,11 @@
 (env-keys ["alice-key"])
 
 ;; Measure inefficient transfer (conceptually - actual gas measurement would need integration)
-(let ((start-time (chain-data 'time)))
+(let ((start-time (at 'block-time (chain-data))))
   (expect "Inefficient transfer works but uses more gas"
     "Transfer completed with poor gas efficiency"
     (inefficient-transfer "alice" "bob" 100.0))
-  (let ((inefficient-time (diff-time (chain-data 'time) start-time)))
+  (let ((inefficient-time (diff-time (at 'block-time (chain-data)) start-time)))
     (print (format "Inefficient transfer time: {}" [inefficient-time]))))
 
 ;; Reset balances for fair comparison
@@ -73,11 +56,11 @@
 (update accounts "bob" { "balance": 500.0 })
 
 ;; Measure efficient transfer
-(let ((start-time (chain-data 'time)))
+(let ((start-time (at 'block-time (chain-data))))
   (expect "Efficient transfer works with better gas usage"
     "Transfer completed efficiently"
     (efficient-transfer "alice" "bob" 100.0))
-  (let ((efficient-time (diff-time (chain-data 'time) start-time)))
+  (let ((efficient-time (diff-time (at 'block-time (chain-data)) start-time)))
     (print (format "Efficient transfer time: {}" [efficient-time]))))
 
 ;; Reset balances
@@ -85,11 +68,11 @@
 (update accounts "bob" { "balance": 500.0 })
 
 ;; Test optimal transfer
-(let ((start-time (chain-data 'time)))
+(let ((start-time (at 'block-time (chain-data))))
   (expect "Optimal transfer achieves best gas efficiency"
     "Optimal transfer completed"
     (optimal-transfer "alice" "bob" 100.0))
-  (let ((optimal-time (diff-time (chain-data 'time) start-time)))
+  (let ((optimal-time (diff-time (at 'block-time (chain-data)) start-time)))
     (print (format "Optimal transfer time: {}" [optimal-time]))))
 
 (commit-tx)
@@ -135,18 +118,18 @@
 (let ((test-list ["a", "b", "c", "b", "d", "c", "e"]))
   
   ;; Test inefficient O(n²) algorithm
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((inefficient-result (inefficient-find-duplicates test-list)))
-      (let ((inefficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((inefficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Inefficient duplicate finding time: {}" [inefficient-time]))
         (expect "Inefficient algorithm finds duplicates"
           true
           (and (contains "b" inefficient-result) (contains "c" inefficient-result))))))
   
   ;; Test efficient O(n) algorithm  
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((efficient-result (efficient-find-duplicates test-list)))
-      (let ((efficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((efficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Efficient duplicate finding time: {}" [efficient-time]))
         (expect "Efficient algorithm finds same duplicates"
           true
@@ -177,18 +160,18 @@
 ]))
 
   ;; Test inefficient linear search
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (inefficient-user-lookup test-users "user2")))
-      (let ((search-time (diff-time (chain-data 'time) start-time)))
+      (let ((search-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Linear search time: {}" [search-time]))
         (expect "Linear search finds user"
           "Bob"
           (at 'name result)))))
   
   ;; Test efficient hash map lookup
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (efficient-user-lookup "user2")))
-      (let ((lookup-time (diff-time (chain-data 'time) start-time)))
+      (let ((lookup-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Hash lookup time: {}" [lookup-time]))
         (expect "Hash lookup finds user"
           "Bob"
@@ -214,31 +197,31 @@
 ]))
 
   ;; Test inefficient string concatenation
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (inefficient-report-generation test-items)))
-      (let ((inefficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((inefficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Inefficient string concat time: {}" [inefficient-time])))))
   
   ;; Test efficient string building
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (efficient-report-generation test-items)))
-      (let ((efficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((efficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Efficient string building time: {}" [efficient-time]))))))
 
 ;; Test list processing optimization
 (let ((test-numbers [1.0, -2.0, 15.0, -5.0, 120.0, 8.0, -3.0, 200.0]))
   
   ;; Test inefficient multiple-pass processing
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (inefficient-list-processing test-numbers)))
-      (let ((inefficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((inefficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Inefficient list processing time: {}" [inefficient-time]))
         (print (format "Inefficient result: {}" [result])))))
   
   ;; Test efficient single-pass processing
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (efficient-list-processing test-numbers)))
-      (let ((efficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((efficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Efficient list processing time: {}" [efficient-time]))
         (print (format "Efficient result: {}" [result]))))))
 
@@ -268,11 +251,11 @@
   
   ;; Test efficient batch transfer (single capability)
   (env-keys ["alice-key", "bob-key"])  ;; Multiple signers
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (expect "Efficient batch transfer works"
       "Batch completed efficiently"
       (efficient-batch-transfer test-transfers))
-    (let ((batch-time (diff-time (chain-data 'time) start-time)))
+    (let ((batch-time (diff-time (at 'block-time (chain-data)) start-time)))
       (print (format "Efficient batch transfer time: {}" [batch-time])))))
 
 (print "✓ Batch capabilities reduce overhead vs individual capability grants")
@@ -288,9 +271,9 @@
 (print "=== INTEGER ARITHMETIC OPTIMIZATION TESTS ===")
 
 ;; Test integer size impact on gas costs
-(let ((start-time (chain-data 'time)))
+(let ((start-time (at 'block-time (chain-data))))
   (let ((result (demonstrate-integer-costs)))
-    (let ((calc-time (diff-time (chain-data 'time) start-time)))
+    (let ((calc-time (diff-time (at 'block-time (chain-data)) start-time)))
       (print (format "Integer arithmetic optimization time: {}" [calc-time]))
       (print (format "Optimized calculation result: {}" [result])))))
 
@@ -324,16 +307,16 @@
 }))
 
   ;; Test inefficient repeated field access
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (inefficient-trade-calculation test-trade)))
-      (let ((inefficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((inefficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Inefficient field access time: {}" [inefficient-time]))
         (print (format "Trade calculation result: {}" [result])))))
   
   ;; Test efficient destructuring
-  (let ((start-time (chain-data 'time)))
+  (let ((start-time (at 'block-time (chain-data))))
     (let ((result (efficient-trade-calculation test-trade)))
-      (let ((efficient-time (diff-time (chain-data 'time) start-time)))
+      (let ((efficient-time (diff-time (at 'block-time (chain-data)) start-time)))
         (print (format "Efficient destructuring time: {}" [efficient-time]))
         (print (format "Same calculation result: {}" [result]))))))
 

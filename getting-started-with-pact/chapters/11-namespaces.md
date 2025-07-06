@@ -203,10 +203,10 @@ data Namespace = Namespace
   
   (defun log-event:string (event-type:string data:object)
     @doc "Log protocol event"
-    (insert event-logs (hash [event-type (chain-data 'time)]) {
+    (insert event-logs (hash [event-type (at 'block-time (chain-data))]) {
       "event-type": event-type,
       "data": data,
-      "timestamp": (chain-data 'time),
+      "timestamp": (at 'block-time (chain-data)),
       "block-height": (chain-data 'block-height)
     }))
 )
@@ -261,7 +261,7 @@ data Namespace = Namespace
       "type": type,
       "amount": amount,
       "price": price,
-      "created": (chain-data 'time)
+      "created": (at 'block-time (chain-data))
     }))
 )
 
@@ -295,7 +295,7 @@ data Namespace = Namespace
     (write prices asset {
       "asset": asset,
       "price": price,
-      "timestamp": (chain-data 'time),
+      "timestamp": (at 'block-time (chain-data)),
       "source": source
     }))
 )
@@ -433,7 +433,7 @@ data Namespace = Namespace
       "proposer": (tx-sender),
       "votes-for": 0,
       "votes-against": 0,
-      "deadline": (add-time (chain-data 'time) (days 7)),
+      "deadline": (add-time (at 'block-time (chain-data)) (days 7)),
       "executed": false
     }))
   
@@ -473,14 +473,14 @@ data Namespace = Namespace
   
   (defun propose-with-timelock:string (proposal-id:string target-ns:string action:string params:object)
     @doc "Propose namespace change with timelock"
-    (let ((execution-time (add-time (chain-data 'time) (seconds TIMELOCK_DELAY))))
+    (let ((execution-time (add-time (at 'block-time (chain-data)) (seconds TIMELOCK_DELAY))))
       (insert timelock-proposals proposal-id {
         "id": proposal-id,
         "target-namespace": target-ns,
         "action": action,
         "params": params,
         "proposer": (tx-sender),
-        "created": (chain-data 'time),
+        "created": (at 'block-time (chain-data)),
         "execution-time": execution-time,
         "executed": false
       })
@@ -495,7 +495,7 @@ data Namespace = Namespace
       "params" := params
     }
       (enforce (not is-executed) "Already executed")
-      (enforce (>= (chain-data 'time) exec-time) "Timelock not expired")
+      (enforce (>= (at 'block-time (chain-data)) exec-time) "Timelock not expired")
       
       ;; Execute the governance action
       (execute-governance-action action params)
@@ -526,7 +526,7 @@ data Namespace = Namespace
       "namespace": namespace,
       "version": version,
       "modules": modules,
-      "created": (chain-data 'time),
+      "created": (at 'block-time (chain-data)),
       "deprecated": false
     }))
   

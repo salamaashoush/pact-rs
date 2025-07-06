@@ -175,7 +175,7 @@ User guards enable custom authorization logic through user-defined functions.
 ```pact
 (defun time-locked-auth:bool (unlock-time:time owner:string)
   @doc "Authorization that's time-locked"
-  (and (>= (chain-data 'time) unlock-time)
+  (and (>= (at 'block-time (chain-data)) unlock-time)
        (enforce-keyset owner)))
 
 (defun create-time-locked-guard (unlock-time:time owner:string)
@@ -327,7 +327,7 @@ User guards enable custom authorization logic through user-defined functions.
                                permissions:[string] expires:time)
     @doc "Check delegation validity"
     (and (= (tx-sender) delegatee)
-         (< (chain-data 'time) expires)
+         (< (at 'block-time (chain-data)) expires)
          ;; Additional permission checks...
          true))
   

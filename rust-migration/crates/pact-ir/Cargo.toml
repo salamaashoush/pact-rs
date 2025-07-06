@@ -1,0 +1,19 @@
+[package]
+name = "pact-ir"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "TODO: Add description for pact-ir"
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+compact_str = "0.8.1"
+pact-core = { path = "../pact-core" }
+pact-syntax = { path = "../pact-syntax" }
+[dev-dependencies]
+proptest = { workspace = true }

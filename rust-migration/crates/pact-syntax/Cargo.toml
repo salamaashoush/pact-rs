@@ -1,0 +1,34 @@
+[package]
+name = "pact-syntax"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Lexical analysis and parsing for the Pact smart contract language (consolidated lexer + parser)"
+
+[dependencies]
+# Core dependencies
+pact-core = { path = "../pact-core" }
+
+# External dependencies (combined from lexer + parser)
+logos = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+compact_str = { version = "0.8.1", features = ["serde"] }
+
+# Performance optimization dependencies
+rustc-hash = "2.0"
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "syntax_benches"
+harness = false
+
+[lints]
+workspace = true

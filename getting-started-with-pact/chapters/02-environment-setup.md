@@ -302,11 +302,11 @@ Create `contracts/hello-world.pact`:
   
   (defun store-message:string (msg:string author:string)
     @doc "Store a message on the blockchain"
-    (let ((msg-id (hash [msg author (chain-data 'time)])))
+    (let ((msg-id (hash [msg author (at 'block-time (chain-data))])))
       (insert messages msg-id {
         "text": msg,
         "author": author,
-        "timestamp": (chain-data 'time)
+        "timestamp": (at 'block-time (chain-data))
       })
       (format "Message stored with ID: {}" [msg-id])))
   

@@ -1,0 +1,238 @@
+;; Test file for Chapter 16: Cryptography and Zero-Knowledge Features
+
+(begin-tx "Load cryptography examples")
+
+;; Set up test environment
+(env-data {
+  "admin-keyset": ["admin-key"],
+  "holder-data": { "public-key": "holder-public-key-123" }
+})
+
+(env-keys ["admin-key"])
+
+;; Load the module
+(load "cryptography-examples.pact")
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST HASH FUNCTIONS
+;; ============================================================================
+
+(begin-tx "Test hash functions")
+
+;; Test Keccak-256 hash (Ethereum compatibility)
+(expect "Keccak-256 hash works"
+  true
+  (!= "" (crypto-examples.ethereum-compatible-hash "hello world")))
+
+;; Test Ethereum message verification
+(let ((message "test message")
+      (msg-hash (crypto-examples.ethereum-compatible-hash "test message")))
+  (expect "Ethereum message verification works"
+    true
+    (crypto-examples.verify-ethereum-message message msg-hash)))
+
+;; Test Merkle leaf creation
+(let ((transaction {
+  "from": "alice",
+  "to": "bob", 
+  "amount": 100.0,
+  "nonce": 1
+}))
+  (expect "Merkle leaf creation works"
+    true
+    (!= "" (crypto-examples.create-merkle-leaf transaction))))
+
+;; Test Poseidon hash for privacy
+(expect "Poseidon commitment creation works"
+  true
+  (!= "" (crypto-examples.create-private-commitment 42 12345)))
+
+;; Test account state hashing
+(expect "Account state hashing works"
+  true
+  (!= "" (crypto-examples.hash-account-state 1000.0 5)))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ZERO-KNOWLEDGE PROOFS
+;; ============================================================================
+
+(begin-tx "Test zero-knowledge proofs")
+
+;; Mock proof structure for testing
+(env-data {
+  "mock-proof": {
+    "pi-a": { "x": "123", "y": "456" },
+    "pi-b": { "x": "789", "y": "abc" },
+    "pi-c": { "x": "def", "y": "012" },
+    "public-inputs": [100, 25]
+  }
+})
+
+;; Test balance proof verification (would use real ZK proof in practice)
+(expect "Balance proof verification structure works"
+  true
+  (crypto-examples.verify-balance-proof (read-msg "mock-proof") 50))
+
+;; Test age proof verification  
+(expect "Age proof verification structure works"
+  true
+  (crypto-examples.verify-age-proof (read-msg "mock-proof") 18))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ELLIPTIC CURVE OPERATIONS
+;; ============================================================================
+
+(begin-tx "Test elliptic curve operations")
+
+;; Mock elliptic curve points for testing
+(env-data {
+  "mock-point": { "x": "123456", "y": "789012" },
+  "mock-commitment": { "x": "abcdef", "y": "012345" }
+})
+
+;; Test commitment creation (would use real curve operations in practice)
+(expect "Commitment creation works"
+  true
+  (!= {} (crypto-examples.create-commitment 42 12345)))
+
+;; Test mock signature aggregation
+(let ((mock-sigs [
+  { "x": "123", "y": "456" },
+  { "x": "789", "y": "abc" }
+]))
+  (expect "Signature aggregation works"
+    true
+    (!= {} (crypto-examples.aggregate-signatures mock-sigs))))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST PRIVATE VOTING
+;; ============================================================================
+
+(begin-tx "Test private voting system")
+
+;; Create a test proposal
+(expect "Proposal creation works"
+  "Write"
+  (crypto-examples.create-proposal "prop-1" "Should we upgrade the protocol?"))
+
+;; Mock vote data
+(env-data {
+  "vote-proof": {
+    "pi-a": { "x": "vote-proof-a", "y": "vote-proof-a2" },
+    "pi-b": { "x": "vote-proof-b", "y": "vote-proof-b2" },
+    "public-inputs": [1]
+  }
+})
+
+;; Submit a vote
+(expect "Private vote submission works"
+  "Vote recorded successfully"
+  (crypto-examples.submit-private-vote 
+    "prop-1" 
+    true 
+    "nullifier-123"
+    (read-msg "vote-proof")))
+
+;; Try to vote again with same nullifier (should fail)
+(expect-failure "Double voting prevented"
+  "Vote already cast"
+  (crypto-examples.submit-private-vote 
+    "prop-1" 
+    false 
+    "nullifier-123"
+    (read-msg "vote-proof")))
+
+;; Check proposal results
+(let ((results (crypto-examples.get-proposal-results "prop-1")))
+  (expect "Vote was counted"
+    1
+    (at "yes-votes" results))
+  
+  (expect "No votes remain zero"
+    0
+    (at "no-votes" results)))
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ANONYMOUS CREDENTIALS
+;; ============================================================================
+
+(begin-tx "Test anonymous credentials")
+
+;; Issue a credential
+(expect "Credential issuance works"
+  "Credential issued successfully"
+  (crypto-examples.issue-credential 
+    "alice" 
+    [25, 1000, 5] ; age, income, score
+    [12345, 67890, 11111])) ; randomness values
+
+;; Check credential information
+(let ((cred-info (crypto-examples.get-credential-info "alice")))
+  (expect "Credential has correct commitment count"
+    3
+    (at "commitment-count" cred-info))
+  
+  (expect "Credential is marked as issued"
+    true
+    (at "issued" cred-info)))
+
+;; Mock credential presentation
+(env-data {
+  "presentation-proof": {
+    "pi-a": { "x": "presentation-a", "y": "presentation-a2" },
+    "pi-b": { "x": "presentation-b", "y": "presentation-b2" }
+  }
+})
+
+;; Verify credential presentation (simplified)
+(expect "Credential presentation verification works"
+  true
+  (crypto-examples.verify-credential-presentation 
+    "alice"
+    (read-msg "presentation-proof")
+    [25])) ; disclosed age only
+
+(commit-tx)
+
+;; ============================================================================
+;; TEST ERROR CASES
+;; ============================================================================
+
+(begin-tx "Test error cases")
+
+;; Test invalid proof structure
+(env-data {
+  "invalid-proof": {
+    "pi-a": { "x": "invalid", "y": "invalid" },
+    "public-inputs": [-1] ; Invalid vote value
+  }
+})
+
+;; This should fail with our mock verification
+(expect-failure "Invalid vote value rejected"
+  "Invalid vote proof"
+  (crypto-examples.submit-private-vote 
+    "prop-1"
+    true
+    "nullifier-456"
+    (read-msg "invalid-proof")))
+
+;; Test unauthorized credential issuance
+(env-keys [])
+(expect-failure "Unauthorized credential issuance fails"
+  "keyset failure"
+  (crypto-examples.issue-credential "bob" [30] [54321]))
+
+(commit-tx)
+
+(print "All cryptography tests passed!")

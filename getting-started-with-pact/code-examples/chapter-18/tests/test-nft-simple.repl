@@ -1,0 +1,79 @@
+;; tests/test-nft-simple.repl
+;; Simple NFT test
+
+(begin-tx "Setup")
+
+(env-data {
+  "nft-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+(env-chain-data { "sender": "alice" })
+
+(define-keyset 'nft-admin (read-keyset "nft-admin"))
+
+(load "../modules/nft-basic.pact")
+
+(commit-tx)
+
+;; Test Collection
+(begin-tx "Create collection")
+
+(expect "Collection created"
+  "Collection art created"
+  (nft-basic.create-collection "art" 10 "ipfs://Qm"))
+
+(expect "Collection creator"
+  "alice"
+  (at 'creator (nft-basic.get-collection "art")))
+
+(expect "Collection max supply"
+  10
+  (at 'max-supply (nft-basic.get-collection "art")))
+
+(expect "Collection minted"
+  0
+  (at 'minted (nft-basic.get-collection "art")))
+
+(commit-tx)
+
+;; Test Minting
+(begin-tx "Mint NFTs")
+
+(expect "Mint #1"
+  "art:1"
+  (nft-basic.mint "art" "alice"))
+
+(expect "Mint #2"
+  "art:2"
+  (nft-basic.mint "art" "bob"))
+
+(expect "Owner of #1"
+  "alice"
+  (nft-basic.get-owner "art:1"))
+
+(expect "Collection updated"
+  2
+  (at 'minted (nft-basic.get-collection "art")))
+
+(commit-tx)
+
+;; Test Transfer
+(begin-tx "Transfer NFT")
+
+(env-chain-data { "sender": "alice" })
+
+(expect "Transfer succeeds"
+  "Transfer complete"
+  (nft-basic.transfer "art:1" "charlie"))
+
+(expect "New owner"
+  "charlie"
+  (nft-basic.get-owner "art:1"))
+
+(commit-tx)
+
+(print "Simple NFT tests passed!")

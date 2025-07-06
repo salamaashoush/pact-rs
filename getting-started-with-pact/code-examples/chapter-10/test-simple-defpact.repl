@@ -1,0 +1,4 @@
+(begin-tx)
+(load "simple-defpact-test.pact")
+(commit-tx)
+(print "Simple defpact loaded successfully")

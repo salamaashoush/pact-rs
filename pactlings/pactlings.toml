@@ -1,0 +1,12 @@
+# Pactlings Configuration
+
+[config]
+exercises_dir = "exercises"
+solutions_dir = "solutions"
+info_dir = "info"
+pact_executable = "pact"
+auto_verify = true
+show_hints = true
+
+# Exercise definitions are loaded from src/config.rs
+# This file can be used to override default settings

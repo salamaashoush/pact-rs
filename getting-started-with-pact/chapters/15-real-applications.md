@@ -165,7 +165,7 @@ Let's build a comprehensive lending protocol with the following features:
         "utilization-rate": 0.0,
         "reserve-factor": reserve-factor,
         "liquidation-threshold": 0.75,
-        "last-update": (chain-data 'time)
+        "last-update": (at 'block-time (chain-data))
       }))
     (format "Pool created for asset {}" [asset]))
   
@@ -182,12 +182,12 @@ Let's build a comprehensive lending protocol with the following features:
     (with-read pools asset { "total-supplied" := supplied }
       (update pools asset { 
         "total-supplied": (safe-add supplied amount),
-        "last-update": (chain-data 'time)
+        "last-update": (at 'block-time (chain-data))
       }))
     
     ;; Update user position
     (with-default-read user-positions user
-      { "supplied": [], "borrowed": [], "last-update": (chain-data 'time) }
+      { "supplied": [], "borrowed": [], "last-update": (at 'block-time (chain-data)) }
       { "supplied" := user-supplied }
       
       (let ((updated-supplied (update-user-supplied user-supplied asset amount)))
@@ -195,7 +195,7 @@ Let's build a comprehensive lending protocol with the following features:
           "user": user,
           "supplied": updated-supplied,
           "borrowed": user-supplied, ;; Keep existing borrowed
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })))
     
     ;; Transfer tokens to pool
@@ -228,18 +228,18 @@ Let's build a comprehensive lending protocol with the following features:
         ;; Update pool state
         (update pools asset {
           "total-borrowed": (safe-add borrowed amount),
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })))
     
     ;; Update user position
     (with-default-read user-positions user
-      { "supplied": [], "borrowed": [], "last-update": (chain-data 'time) }
+      { "supplied": [], "borrowed": [], "last-update": (at 'block-time (chain-data)) }
       { "borrowed" := user-borrowed }
       
       (let ((updated-borrowed (update-user-borrowed user-borrowed asset amount)))
         (update user-positions user {
           "borrowed": updated-borrowed,
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })))
     
     ;; Transfer tokens to user
@@ -322,7 +322,7 @@ Let's build a comprehensive lending protocol with the following features:
       (update pools asset {
         "borrow-rate": new-borrow-rate,
         "supply-rate": new-supply-rate,
-        "last-update": (chain-data 'time)
+        "last-update": (at 'block-time (chain-data))
       })))
   
   (defun get-pool-account:string (asset:string)
@@ -572,7 +572,7 @@ class DeFiProtocolClient {
         "seller": seller,
         "price": price,
         "currency": "KDA",
-        "created": (chain-data 'time),
+        "created": (at 'block-time (chain-data)),
         "active": true
       })
       
@@ -634,7 +634,7 @@ class DeFiProtocolClient {
     
     (let ((seller (tx-sender))
           (auction-id (create-auction-id token-id collection seller))
-          (end-time (add-time (chain-data 'time) (seconds duration))))
+          (end-time (add-time (at 'block-time (chain-data)) (seconds duration))))
       
       ;; Verify ownership
       (verify-nft-ownership token-id collection seller)
@@ -673,7 +673,7 @@ class DeFiProtocolClient {
       "finalized" := is-finalized
     }
       (enforce (not is-finalized) "Auction already finalized")
-      (enforce (< (chain-data 'time) end-time) "Auction has ended")
+      (enforce (< (at 'block-time (chain-data)) end-time) "Auction has ended")
       (enforce (!= bidder seller) "Seller cannot bid on own auction")
       
       ;; Validate bid amount
@@ -714,7 +714,7 @@ class DeFiProtocolClient {
       "finalized" := is-finalized
     }
       (enforce (not is-finalized) "Auction already finalized")
-      (enforce (>= (chain-data 'time) end-time) "Auction not yet ended")
+      (enforce (>= (at 'block-time (chain-data)) end-time) "Auction not yet ended")
       
       (if (= winner "")
           ;; No bids - return NFT to seller
@@ -773,11 +773,11 @@ class DeFiProtocolClient {
   ;; Utility functions
   (defun create-listing-id:string (token-id:string collection:string seller:string)
     @doc "Create unique listing ID"
-    (hash [token-id collection seller (chain-data 'time)]))
+    (hash [token-id collection seller (at 'block-time (chain-data))]))
   
   (defun create-auction-id:string (token-id:string collection:string seller:string)
     @doc "Create unique auction ID"
-    (hash ["auction" token-id collection seller (chain-data 'time)]))
+    (hash ["auction" token-id collection seller (at 'block-time (chain-data))]))
   
   (defun verify-nft-ownership:bool (token-id:string collection:string owner:string)
     @doc "Verify NFT ownership"
@@ -887,7 +887,7 @@ class DeFiProtocolClient {
     @doc "Create governance proposal"
     (let ((proposer (tx-sender))
           (user-power (get-user-voting-power proposer))
-          (voting-start (add-time (chain-data 'time) (days 1)))
+          (voting-start (add-time (at 'block-time (chain-data)) (days 1)))
           (voting-end (add-time voting-start (days VOTING_PERIOD_DAYS)))
           (execution-delay (add-time voting-end (days EXECUTION_DELAY_DAYS))))
       
@@ -934,8 +934,8 @@ class DeFiProtocolClient {
       }
         ;; Validate voting conditions
         (enforce (= status "active") "Proposal not active for voting")
-        (enforce (>= (chain-data 'time) start-time) "Voting not yet started")
-        (enforce (< (chain-data 'time) end-time) "Voting period ended")
+        (enforce (>= (at 'block-time (chain-data)) start-time) "Voting not yet started")
+        (enforce (< (at 'block-time (chain-data)) end-time) "Voting period ended")
         (enforce (> voting-power 0.0) "No voting power")
         (enforce (contains choice ["FOR" "AGAINST" "ABSTAIN"]) "Invalid vote choice")
         
@@ -951,7 +951,7 @@ class DeFiProtocolClient {
           "voter": voter,
           "choice": choice,
           "voting-power": voting-power,
-          "timestamp": (chain-data 'time)
+          "timestamp": (at 'block-time (chain-data))
         })
         
         ;; Update proposal vote counts
@@ -979,7 +979,7 @@ class DeFiProtocolClient {
       "status" := status
     }
       (enforce (= status "active") "Proposal not active")
-      (enforce (>= (chain-data 'time) end-time) "Voting period not ended")
+      (enforce (>= (at 'block-time (chain-data)) end-time) "Voting period not ended")
       
       (let ((total-votes (+ (+ for-votes against-votes) abstain-votes))
             (total-voting-power (get-total-voting-power))
@@ -1011,7 +1011,7 @@ class DeFiProtocolClient {
     }
       (enforce (= status "approved") "Proposal not approved")
       (enforce (not is-executed) "Proposal already executed")
-      (enforce (>= (chain-data 'time) delay-time) "Execution delay not passed")
+      (enforce (>= (at 'block-time (chain-data)) delay-time) "Execution delay not passed")
       
       ;; Execute the governance action
       (execute-governance-action contract function params)
@@ -1039,7 +1039,7 @@ class DeFiProtocolClient {
           (update voting-powers delegator {
             "delegated-to": delegatee,
             "delegated-power": (+ current-delegated amount),
-            "last-update": (chain-data 'time)
+            "last-update": (at 'block-time (chain-data))
           })
           
           ;; Update delegatee
@@ -1048,7 +1048,7 @@ class DeFiProtocolClient {
             { "power" := delegatee-power }
             (update voting-powers delegatee {
               "power": (+ delegatee-power amount),
-              "last-update": (chain-data 'time)
+              "last-update": (at 'block-time (chain-data))
             }))
           
           (format "Delegated {} voting power from {} to {}" [amount delegator delegatee])))))

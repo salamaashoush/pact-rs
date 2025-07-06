@@ -1,0 +1,249 @@
+;; test-dex-simple.repl
+;; Simplified DEX testing
+
+;; Load dependencies and coin interface
+(env-data { "upgrade": false })
+(load "../../../pact-tests/pact-tests/coin-v5/fungible-v2.pact")
+(load "../../../pact-tests/pact-tests/coin-v5/coin-v5.pact")
+
+;; Define a simple test token
+(begin-tx "Define test token")
+(module test-token GOVERNANCE
+  (implements fungible-v2)
+
+  (defcap GOVERNANCE () (enforce-keyset 'admin))
+
+  (defschema account
+    balance:decimal
+    guard:guard)
+
+  (deftable accounts:{account})
+
+  (defun create-account:string (account:string guard:guard)
+    (insert accounts account { "balance": 0.0, "guard": guard }))
+
+  (defun get-balance:decimal (account:string)
+    (at 'balance (read accounts account)))
+
+  (defun details:object{fungible-v2.account-details} (account:string)
+    (with-read accounts account { "balance" := bal, "guard" := g }
+      { "account": account, "balance": bal, "guard": g }))
+
+  (defun rotate:string (account:string new-guard:guard)
+    (with-read accounts account { "guard" := old-guard }
+      (enforce-guard old-guard)
+      (update accounts account { "guard": new-guard })))
+
+  (defun precision:integer () 12)
+
+  (defun enforce-unit:bool (amount:decimal)
+    (enforce (= (floor amount 12) amount) "Precision violation"))
+
+  (defun transfer:string (sender:string receiver:string amount:decimal)
+    (enforce (!= sender receiver) "Cannot transfer to self")
+    (enforce (> amount 0.0) "Amount must be positive")
+    (enforce-unit amount)
+    (with-capability (TRANSFER sender receiver amount)
+      (debit sender amount)
+      (with-read accounts receiver { "guard" := guard }
+        (credit receiver guard amount))))
+
+  (defun transfer-create:string (sender:string receiver:string receiver-guard:guard amount:decimal)
+    (with-default-read accounts receiver
+      { "balance": -1.0 }
+      { "balance" := balance }
+      (if (= balance -1.0)
+        (create-account receiver receiver-guard)
+        "Account exists"))
+    (transfer sender receiver amount))
+
+  (defcap TRANSFER:bool (sender:string receiver:string amount:decimal)
+    @managed amount TRANSFER-mgr
+    (enforce-guard (at 'guard (read accounts sender)))
+    (compose-capability (DEBIT sender))
+    (compose-capability (CREDIT receiver)))
+
+  (defun TRANSFER-mgr:decimal (managed:decimal requested:decimal)
+    (enforce (<= requested managed) "Transfer exceeds managed amount")
+    (- managed requested))
+
+  (defcap DEBIT:bool (account:string)
+    (enforce-guard (at 'guard (read accounts account))))
+
+  (defcap CREDIT:bool (account:string) true)
+
+  (defun debit:string (account:string amount:decimal)
+    (require-capability (DEBIT account))
+    (with-read accounts account { "balance" := balance }
+      (enforce (>= balance amount) "Insufficient balance")
+      (update accounts account { "balance": (- balance amount) })))
+
+  (defun credit:string (account:string guard:guard amount:decimal)
+    (require-capability (CREDIT account))
+    (with-default-read accounts account
+      { "balance": -1.0, "guard": guard }
+      { "balance" := balance, "guard" := retg }
+      (enforce (= retg guard) "Guards do not match")
+      (write accounts account {
+        "balance": (if (= balance -1.0) amount (+ balance amount)),
+        "guard": retg
+      })))
+
+  (defun mint:string (account:string amount:decimal)
+    (with-capability (GOVERNANCE)
+      (with-capability (CREDIT account)
+        (with-read accounts account { "guard" := guard }
+          (credit account guard amount)))))
+
+  (defun total-supply:decimal () 0.0)
+)
+
+(create-table accounts)
+(commit-tx)
+
+;; Load DEX modules
+(load "dex-pair.pact")
+
+;; Test environment setup
+(begin-tx "Setup")
+(env-data {
+  "dex-admin": ["admin-key"],
+  "admin": ["admin-key"],
+  "alice": ["alice-key"],
+  "bob": ["bob-key"],
+  "coin-keyset": ["admin-key"],
+  "upgrade": false
+})
+(env-keys ["admin-key"])
+
+(define-keyset 'dex-admin (read-keyset 'dex-admin))
+(define-keyset 'admin (read-keyset 'admin))
+(define-keyset 'alice (read-keyset 'alice))
+(define-keyset 'bob (read-keyset 'bob))
+(define-keyset 'coin-keyset (read-keyset 'coin-keyset))
+
+;; Create user accounts
+(test-token.create-account "alice" (read-keyset 'alice))
+(test-token.create-account "bob" (read-keyset 'bob))
+(coin.create-account "alice" (read-keyset 'alice))
+(coin.create-account "bob" (read-keyset 'bob))
+
+;; Mint initial tokens for testing
+(test-token.mint "alice" 10000000.0)
+(test-token.mint "bob" 5000000.0)
+(coin.coinbase "alice" (read-keyset 'alice) 1000000.0)
+(coin.coinbase "bob" (read-keyset 'bob) 500000.0)
+
+(commit-tx)
+
+;; Test 1: Pair creation
+(begin-tx "Test pair creation")
+(use dex-pair)
+
+;; Create trading pair
+(env-keys ["admin-key"])
+(create-pair coin test-token)
+
+;; Verify pair exists
+(expect "Pair created successfully"
+  true
+  (> (length (format "{}" [(get-pair coin test-token)])) 0))
+
+(commit-tx)
+
+;; Test 2: Add initial liquidity
+(begin-tx "Test add liquidity")
+(use dex-pair)
+
+;; Alice adds initial liquidity
+(env-keys ["alice-key"])
+(env-data { "user-guard": ["alice-key"] })
+
+;; Install capabilities for transfers
+(install-capability (coin.TRANSFER "alice" (get-pair-account coin test-token) 100000.0))
+(install-capability (test-token.TRANSFER "alice" (get-pair-account coin test-token) 200000.0))
+
+(add-liquidity
+  coin test-token
+  100000.0 200000.0    ;; Desired amounts (1:2 ratio)
+  90000.0 180000.0     ;; Minimum amounts (10% slippage)
+  "alice"
+  (add-time (at 'block-time (chain-data)) (hours 1)))
+
+;; Check reserves
+(let ((reserves (get-reserves coin test-token)))
+  (expect "Reserve 0 correct" 100000.0 (at 0 reserves))
+  (expect "Reserve 1 correct" 200000.0 (at 1 reserves)))
+
+;; Check Alice's LP balance
+(expect "Alice has LP tokens" true (> (get-lp-balance "alice") 0.0))
+
+(commit-tx)
+
+;; Test 3: Token swapping
+(begin-tx "Test token swapping")
+(use dex-pair)
+
+;; Check price before swap
+(let ((price-before (get-price coin test-token)))
+  (expect "Initial price is 2:1" 2.0 price-before))
+
+;; Bob swaps KDA for test tokens
+(env-keys ["bob-key"])
+(install-capability (coin.TRANSFER "bob" (get-pair-account coin test-token) 1000.0))
+
+(swap-exact-tokens-for-tokens
+  1000.0          ;; Amount in
+  1800.0          ;; Minimum amount out (allowing for slippage and fees)
+  [coin test-token]
+  "bob"
+  (add-time (at 'block-time (chain-data)) (hours 1)))
+
+;; Check that price has moved
+(let ((price-after (get-price coin test-token)))
+  (expect "Price moved after swap" true (!= 2.0 price-after)))
+
+(commit-tx)
+
+;; Test 4: Calculate quotes
+(begin-tx "Test quotes")
+(use dex-pair)
+
+;; Test quote function
+(let ((quoted-amount (quote 1000.0 100000.0 200000.0)))
+  (expect "Quote calculation correct" 2000.0 quoted-amount))
+
+;; Test get-amount-out
+(let ((amount-out (get-amount-out 1000.0 100000.0 200000.0)))
+  (expect "Amount out calculated" true (> amount-out 1900.0)))
+
+(commit-tx)
+
+;; Test 5: Remove liquidity
+(begin-tx "Test remove liquidity")
+(use dex-pair)
+
+;; Alice removes some liquidity
+(env-keys ["alice-key"])
+(let ((alice-lp-balance (get-lp-balance "alice")))
+  (let ((withdraw-amount (/ alice-lp-balance 4.0))) ;; Remove 25%
+
+    (remove-liquidity
+      coin test-token
+      withdraw-amount
+      1.0 1.0  ;; Very low minimums for testing
+      "alice"
+      (add-time (at 'block-time (chain-data)) (hours 1)))))
+
+;; Check Alice's LP balance decreased
+(expect "Alice LP balance decreased"
+  true
+  (< (get-lp-balance "alice") 200000.0))
+
+(commit-tx)
+
+(print "DEX tests completed successfully!")
+(print "✅ Pair creation and management")
+(print "✅ Liquidity provision and removal")
+(print "✅ Token swapping with price impact")
+(print "✅ Price calculations and quotes")

@@ -1,0 +1,4 @@
+(begin-tx)
+(load "minimal-pact.pact")
+(commit-tx)
+(print "Minimal pact loaded successfully")

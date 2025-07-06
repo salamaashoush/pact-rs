@@ -1,0 +1,24 @@
+[package]
+name = "pact-modules"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+description = "Module system and name resolution for Pact"
+
+[dependencies]
+pact-core = { path = "../pact-core" }
+pact-schema = { path = "../pact-schema" }
+pact-ir = { path = "../pact-ir" }
+pact-db = { path = "../pact-db" }
+pact-syntax = { path = "../pact-syntax" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+[lints]
+workspace = true

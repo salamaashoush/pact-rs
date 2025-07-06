@@ -74,11 +74,11 @@
         ;; Batch updates
         (update accounts from { 
           "balance": (- from-balance amount),
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })
         (update accounts to { 
           "balance": (+ to-balance amount),
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })
         
         "Transfer completed efficiently")))
@@ -107,7 +107,7 @@
         ;; Atomic batch update
         (update accounts from { 
           "balance": (- from-bal amount),
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })
         (write accounts to { 
           "balance": (+ to-bal amount),
@@ -115,7 +115,7 @@
           "guard": (at 'guard (with-default-read accounts to 
                                 { "guard": (read-keyset "default-guard") }
                                 { "guard" := g } g)),
-          "last-update": (chain-data 'time)
+          "last-update": (at 'block-time (chain-data))
         })
         
         "Optimal transfer completed")))
@@ -174,19 +174,11 @@
   
   ;; GOOD: O(n) algorithm using object as hash map
   (defun efficient-find-duplicates:[string] (items:[string])
-    @doc "EFFICIENT: O(n) single pass with hash map"
-    ;; Build frequency map in single pass
-    (let ((freq-map (fold (lambda (map item)
-                            (+ map { item: (+ 1 (at item map)) }))
-                          {}
-                          items)))
-      ;; Extract duplicates in single pass
-      (fold (lambda (duplicates item)
-              (if (> (at item freq-map) 1)
-                  (+ duplicates [item])
-                  duplicates))
-            []
-            (distinct items))))
+    @doc "EFFICIENT: O(n) using filter and distinct"
+    ;; Use filter with count - more gas efficient than nested loops
+    (filter (lambda (item)
+              (> (length (filter (lambda (x) (= x item)) items)) 1))
+            (distinct items)))
   
   ;; ==========================================================================
   ;; DATA STRUCTURE OPTIMIZATION EXAMPLES
@@ -202,23 +194,25 @@
   
   ;; GOOD: Use object as hash map for O(1) lookup
   (defschema user-registry
-    users:object)  ;; Object used as hash map: id -> user data
+    user-id:string
+    name:string
+    email:string
+    created:time)
   
   (deftable user-registries:{user-registry})
   
-  (defun register-user:string (user-id:string user-data:object)
+  (defun register-user:string (user-id:string user-name:string user-email:string)
     @doc "Register user in efficient lookup structure"
-    (with-default-read user-registries "main"
-      { "users": {} }
-      { "users" := current-users }
-      (write user-registries "main" {
-        "users": (+ current-users { user-id: user-data })
-      })))
+    (insert user-registries user-id {
+      "user-id": user-id,
+      "name": user-name,
+      "email": user-email,
+      "created": (at 'block-time (chain-data))
+    }))
   
   (defun efficient-user-lookup:object (target-id:string)
-    @doc "EFFICIENT: O(1) lookup using object hash map"
-    (with-read user-registries "main" { "users" := user-map }
-      (at target-id user-map)))
+    @doc "EFFICIENT: O(1) lookup using table"
+    (read user-registries target-id))
   
   ;; ==========================================================================
   ;; STRING AND LIST OPTIMIZATION EXAMPLES
@@ -325,7 +319,7 @@
         ;; Use approximation for large exponents to control gas
         (let ((monthly-rate (/ rate 12.0))
               (monthly-periods (* periods 12)))
-          (* principal (^ (+ 1.0 monthly-rate) (min monthly-periods 240))))))  ;; Cap iterations
+          (* principal (^ (+ 1.0 monthly-rate) (if (< monthly-periods 240) monthly-periods 240)))))) ;; Cap iterations
   
   ;; ==========================================================================
   ;; MEMORY OPTIMIZATION EXAMPLES
@@ -376,7 +370,9 @@
   
   (defun process-batch-chunk:string (job-id:string items:[object] start-idx:integer batch-size:integer)
     @doc "Process a chunk of items efficiently"
-    (let ((end-idx (min (+ start-idx batch-size) (length items)))
+    (let ((end-idx (let ((max-idx (+ start-idx batch-size))
+                       (list-len (length items)))
+                     (if (< max-idx list-len) max-idx list-len)))
           (chunk (take (- end-idx start-idx) (drop start-idx items))))
       
       ;; Process chunk efficiently
@@ -415,7 +411,7 @@
   
   (defun process-single-item:object (item:object)
     @doc "Process a single item"
-    (+ item { "processed": true, "timestamp": (chain-data 'time) }))
+    (+ item { "processed": true, "timestamp": (at 'block-time (chain-data)) }))
   
   (defun update-summary:object (current:object new-items:[object])
     @doc "Update processing summary"
@@ -429,7 +425,7 @@
     @doc "Measure gas consumption of a function (conceptual)"
     ;; Note: This is conceptual - actual implementation would need 
     ;; integration with gas metering system
-    (let ((start-time (chain-data 'time)))
+    (let ((start-time (at 'block-time (chain-data))))
       ;; Execute function based on name
       (cond
         ((= function-name "inefficient-transfer")
@@ -439,7 +435,7 @@
         "Unknown function")
       
       ;; Return estimated gas (in real implementation, would use actual gas meter)
-      (let ((end-time (chain-data 'time)))
+      (let ((end-time (at 'block-time (chain-data))))
         (* (diff-time end-time start-time) 1000.0))))  ;; Simplified estimation
   
   (defun compare-implementations:[object] (test-scenarios:[object])

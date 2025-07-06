@@ -1,0 +1,325 @@
+;; test-managed-capabilities.repl
+;; Test managed capabilities in DeFi protocols
+
+(begin-tx)
+
+;; Setup admin keyset
+(env-data { "defi-admin": ["admin"], "user-ks": ["user"] })
+(define-keyset 'defi-admin)
+
+;; Load modules
+(load "defi-token.pact")
+(load "lending-pool-improved.pact")
+(load "yield-farming-improved.pact")
+
+;; Mock coin module for testing
+(module coin GOV
+  (defcap GOV () true)
+  (defschema account-details balance:decimal guard:guard)
+  (defun details:object{account-details} (account:string)
+    { "balance": 1000.0, "guard": (read-keyset "user-ks") })
+)
+
+(commit-tx)
+
+;;; Test 1: Managed Transfer Capability
+(begin-tx)
+(use defi-token)
+
+;; Initialize
+(init)
+
+;; Create accounts
+(env-keys ["user"])
+(create-account "alice" (read-keyset "user-ks"))
+(create-account "bob" (read-keyset "user-ks"))
+
+;; Mint tokens to Alice
+(mint "alice" (read-keyset "user-ks") 1000.0)
+
+;; Test managed transfer capability
+(env-sigs [
+  { "key": "user"
+  , "caps": [(TRANSFER "alice" "bob" 100.0)] }
+])
+
+;; First transfer should succeed
+(expect "First transfer succeeds" 
+  "Transferred 50.0 from alice to bob"
+  (transfer "alice" "bob" 50.0))
+
+;; Second transfer within limit should succeed
+(expect "Second transfer within limit succeeds" 
+  "Transferred 30.0 from alice to bob"
+  (transfer "alice" "bob" 30.0))
+
+;; Third transfer exceeding limit should fail
+(expect-failure "Transfer exceeding managed amount fails"
+  "Transfer exceeds allowance"
+  (transfer "alice" "bob" 25.0))
+
+;; Verify balances
+(expect "Alice balance correct" 920.0 (get-balance "alice"))
+(expect "Bob balance correct" 80.0 (get-balance "bob"))
+
+(commit-tx)
+
+;;; Test 2: Lending Pool Managed Capabilities
+(begin-tx)
+(use lending-pool)
+
+;; Add assets
+(env-keys ["admin"])
+(add-asset "ETH" 0.75 0.80 0.05 2000.0)  ;; 75% LTV, 80% liquidation threshold
+(add-asset "USDC" 0.80 0.85 0.05 1.0)     ;; 80% LTV, 85% liquidation threshold
+
+;; User deposits collateral
+(env-keys ["user"])
+(deposit "alice" "ETH" 10.0)  ;; $20,000 worth
+
+;; Test borrowing with managed capability
+;; Max borrow = $20,000 * 0.7 = $14,000
+(env-sigs [
+  { "key": "user"
+  , "caps": [(BORROW-POWER "alice" 14000.0)] }
+])
+
+;; First borrow should succeed
+(expect "First borrow succeeds"
+  "Borrowed 5000.0 USDC"
+  (borrow "alice" "USDC" 5000.0))  ;; $5,000
+
+;; Second borrow within limit should succeed
+(expect "Second borrow within limit succeeds"
+  "Borrowed 5000.0 USDC"
+  (borrow "alice" "USDC" 5000.0))  ;; Another $5,000, total $10,000
+
+;; Third borrow exceeding limit should fail
+(expect-failure "Borrow exceeding power fails"
+  "Insufficient borrowing power"
+  (borrow "alice" "USDC" 5000.0))  ;; Would be $15,000 total
+
+;; Test withdrawal with managed capability
+(env-sigs [
+  { "key": "user"
+  , "caps": [(COLLATERAL-WITHDRAW "alice" "ETH" 3.0)] }
+])
+
+;; Withdrawal within safe limit should succeed
+(expect "Withdrawal within limit succeeds"
+  "Withdrew 2.0 ETH"
+  (withdraw "alice" "ETH" 2.0))
+
+;; Withdrawal exceeding limit should fail
+(expect-failure "Withdrawal exceeding limit fails"
+  "Exceeds withdrawal limit"
+  (withdraw "alice" "ETH" 2.0))
+
+(commit-tx)
+
+;;; Test 3: Yield Farming Managed Capabilities
+(begin-tx)
+(use yield-farming)
+
+;; Create farming pool
+(env-keys ["admin"])
+(create-pool "POOL-1" "aToken" "REWARD" 
+  0.1           ;; 0.1 tokens per second
+  86400         ;; 1 day duration
+  1000.0        ;; Max 1000 tokens per user
+  10.0)         ;; Min 10 tokens
+
+;; Test staking with managed capability
+(env-keys ["user"])
+(env-sigs [
+  { "key": "user"
+  , "caps": [(STAKE-ALLOWANCE "alice" "POOL-1" 1000.0)] }
+])
+
+;; First stake should succeed
+(expect "First stake succeeds"
+  "Staked 500.0 tokens"
+  (stake "alice" "POOL-1" 500.0))
+
+;; Second stake within limit should succeed
+(expect "Second stake within limit succeeds"
+  "Staked 400.0 tokens"
+  (stake "alice" "POOL-1" 400.0))
+
+;; Third stake exceeding limit should fail
+(expect-failure "Stake exceeding limit fails"
+  "Stake limit exceeded"
+  (stake "alice" "POOL-1" 200.0))
+
+;; Advance time to accumulate rewards
+(env-chain-data { "block-time": (add-time (at 'block-time (chain-data)) 3600) })
+
+;; Check pending rewards (3600 seconds * 0.1 = 360 tokens)
+(expect "Pending rewards calculated correctly"
+  360.0
+  (get-pending-rewards "alice" "POOL-1"))
+
+;; Test reward claim with managed capability
+(env-sigs [
+  { "key": "user"
+  , "caps": [(REWARD-CLAIM "alice" "POOL-1" 360.0)] }
+])
+
+;; Claim should succeed
+(expect "Reward claim succeeds"
+  "Claimed 360.0 rewards"
+  (claim-rewards "alice" "POOL-1"))
+
+;; Test unstaking with managed capability
+(env-sigs [
+  { "key": "user"
+  , "caps": [(UNSTAKE-ALLOWANCE "alice" "POOL-1" 900.0)] }
+])
+
+;; Partial unstake should succeed
+(expect "Partial unstake succeeds"
+  "Unstaked 400.0 tokens"
+  (unstake "alice" "POOL-1" 400.0))
+
+;; Full unstake should succeed
+(expect "Full unstake succeeds"
+  "Unstaked 500.0 tokens"
+  (unstake "alice" "POOL-1" 500.0))
+
+(commit-tx)
+
+;;; Test 4: Complex Scenario - Liquidation
+(begin-tx)
+(use lending-pool)
+
+;; Setup: Bob has unhealthy position
+(env-keys ["user"])
+(deposit "bob" "ETH" 10.0)     ;; $20,000 collateral
+(borrow "bob" "USDC" 15000.0)  ;; $15,000 debt (75% utilization)
+
+;; Simulate price drop - ETH falls to $1500
+(env-keys ["admin"])
+(update asset-config "ETH" { "price": 1500.0 })
+
+;; Bob's health factor is now: ($15,000 * 0.75) / $15,000 = 0.75 < 1.0
+
+;; Alice attempts liquidation with managed capability
+(env-keys ["user"])
+(env-sigs [
+  { "key": "user"
+  , "caps": [(LIQUIDATION-ALLOWANCE "alice" 7500.0)] }  ;; 50% of debt
+])
+
+;; Liquidation should succeed
+(expect "Liquidation succeeds"
+  "Liquidated 7500.0 USDC for 5.25 ETH"  ;; With 5% bonus
+  (liquidate "alice" "bob" "USDC" "ETH" 7500.0))
+
+;; Attempt to exceed liquidation allowance
+(expect-failure "Liquidation exceeding allowance fails"
+  "Exceeds liquidation allowance"
+  (liquidate "alice" "bob" "USDC" "ETH" 1000.0))
+
+(commit-tx)
+
+;;; Test 5: Auto-Managed Capabilities
+(begin-tx)
+(use defi-token)
+
+;; Test ROTATE capability (auto-managed, one-time use)
+(env-data { "new-guard": ["alice-new"] })
+(env-sigs [
+  { "key": "user"
+  , "caps": [(ROTATE "alice")] }
+])
+
+;; Create a mock account for rotation
+(insert balances "alice" {
+  "balance": 1000.0,
+  "principal": 1000.0,
+  "last-update": (at 'block-time (chain-data))
+})
+
+;; First rotation should succeed
+(expect "First rotation succeeds"
+  "success"
+  (rotate "alice" (read-keyset "new-guard")))
+
+;; Second rotation should fail (one-shot capability)
+(expect-failure "Second rotation fails"
+  "One-shot managed capability used more than once"
+  (rotate "alice" (read-keyset "user-ks")))
+
+(commit-tx)
+
+;;; Test 6: Nested Managed Capabilities
+(begin-tx)
+
+;; Test that managed capabilities compose correctly
+(module test-compose G
+  (defcap G () true)
+  
+  (defun mgr:integer (m:integer r:integer) 
+    (- m r))
+  
+  (defcap OUTER (x:integer)
+    @managed x mgr
+    (compose-capability (INNER (/ x 2))))
+  
+  (defcap INNER (y:integer)
+    @managed y mgr
+    true)
+  
+  (defun test-nested ()
+    (with-capability (OUTER 100)
+      (require-capability (INNER 50))
+      "success"))
+)
+
+(env-sigs [
+  { "key": "test"
+  , "caps": [(OUTER 100) (INNER 50)] }
+])
+
+(expect "Nested managed capabilities work"
+  "success"
+  (test-nested))
+
+(commit-tx)
+
+;;; Test 7: Edge Cases
+(begin-tx)
+(use yield-farming)
+
+;; Test minimum stake enforcement
+(env-keys ["user"])
+(expect-failure "Stake below minimum fails"
+  "Amount below minimum: 10.0"
+  (stake "alice" "POOL-1" 5.0))
+
+;; Test staking after pool ends
+(env-keys ["admin"])
+(create-pool "POOL-2" "aToken" "REWARD" 0.1 1 1000.0 10.0)  ;; 1 second duration
+
+;; Advance time past pool end
+(env-chain-data { "block-time": (add-time (at 'block-time (chain-data)) 10) })
+
+(env-keys ["user"])
+(expect-failure "Staking after pool end fails"
+  "Pool ended"
+  (stake "alice" "POOL-2" 100.0))
+
+(commit-tx)
+
+;; Summary
+(begin-tx)
+(print "All managed capability tests completed successfully!")
+(print "Key patterns demonstrated:")
+(print "1. Transfer limits with TRANSFER-mgr")
+(print "2. Borrowing power with BORROW-POWER-mgr")
+(print "3. Withdrawal limits with COLLATERAL-WITHDRAW-mgr")
+(print "4. Stake limits with STAKE-ALLOWANCE-mgr")
+(print "5. Liquidation limits with LIQUIDATION-ALLOWANCE-mgr")
+(print "6. Auto-managed capabilities for one-time operations")
+(print "7. Proper composition of managed capabilities")
+(commit-tx)

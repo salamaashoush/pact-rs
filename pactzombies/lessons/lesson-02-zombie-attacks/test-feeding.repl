@@ -1,0 +1,127 @@
+; PactZombies Lesson 2 - Testing Zombie Feeding and Battles
+; =========================================================
+
+; Setup
+(begin-tx)
+(load "zombie-feeding.pact")
+(create-table zombies-table)
+(commit-tx)
+
+; Test 1: Create initial zombies
+(begin-tx)
+(use zombies)
+
+; Alice creates a zombie
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:00:00Z"), "block-height": 1})
+(print "Alice creates her first zombie:")
+(print (create-zombie "Alice's Fighter"))
+(print "")
+
+; Bob creates a zombie
+(env-data {"sender": "bob"})
+(env-chain-data {"block-time": (time "2024-01-01T00:00:05Z"), "block-height": 2})
+(print "Bob creates his first zombie:")
+(print (create-zombie "Bob's Warrior"))
+(print "")
+(commit-tx)
+
+; Test 2: Feed and multiply
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:01:00Z"), "block-height": 10})
+
+(print "Alice's zombie feeds on a human:")
+; Get Alice's zombie ID (we'll use a simple approach for testing)
+(let ((alice-zombies (get-my-zombies)))
+  (if (> (length alice-zombies) 0)
+    (let ((zombie-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))])))
+      (print (feed-and-multiply zombie-id "Victim John"))
+      (print ""))
+    (print "No zombies found for Alice")))
+(commit-tx)
+
+; Test 3: Check zombie stats
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+
+(print "Alice's zombies after feeding:")
+(let ((my-zombies (get-my-zombies)))
+  (map (lambda (z) 
+    (print (format "- {} (Level {}, Wins: {})" 
+      [(at "name" z) (at "level" z) (at "win-count" z)])))
+    my-zombies))
+(print "")
+(commit-tx)
+
+; Test 4: Battle between zombies
+(begin-tx)
+(use zombies)
+(env-chain-data {"block-time": (time "2024-01-01T00:10:00Z"), "block-height": 100})
+
+; Get zombie IDs for battle
+(env-data {"sender": "alice"})
+(let ((alice-zombies (get-my-zombies)))
+  (env-data {"sender": "bob"})
+  (let ((bob-zombies (get-my-zombies)))
+    (if (and (> (length alice-zombies) 0) (> (length bob-zombies) 0))
+      (let ((alice-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))]))
+            (bob-id (format "zombie_{}" [(at "dna" (at 0 bob-zombies))])))
+        (env-data {"sender": "alice"})
+        (print "Battle begins!")
+        (print (battle alice-id bob-id))
+        (print ""))
+      (print "Not enough zombies for battle"))))
+(commit-tx)
+
+; Test 5: Check battle results
+(begin-tx)
+(use zombies)
+
+(print "Battle aftermath:")
+(env-data {"sender": "alice"})
+(print "Alice's zombies:")
+(map (lambda (z) 
+  (let ((zombie-id (format "zombie_{}" [(at "dna" z)])))
+    (print (get-zombie-stats zombie-id))))
+  (get-my-zombies))
+
+(print "")
+(env-data {"sender": "bob"})
+(print "Bob's zombies:")
+(map (lambda (z) 
+  (let ((zombie-id (format "zombie_{}" [(at "dna" z)])))
+    (print (get-zombie-stats zombie-id))))
+  (get-my-zombies))
+(commit-tx)
+
+; Test 6: Cooldown check
+(begin-tx)
+(use zombies)
+(env-data {"sender": "alice"})
+(env-chain-data {"block-time": (time "2024-01-01T00:11:00Z"), "block-height": 110})
+
+(print "")
+(print "Testing cooldown (should fail):")
+(let ((alice-zombies (get-my-zombies)))
+  (env-data {"sender": "bob"})
+  (let ((bob-zombies (get-my-zombies)))
+    (if (and (> (length alice-zombies) 0) (> (length bob-zombies) 0))
+      (let ((alice-id (format "zombie_{}" [(at "dna" (at 0 alice-zombies))]))
+            (bob-id (format "zombie_{}" [(at "dna" (at 0 bob-zombies))])))
+        (env-data {"sender": "alice"})
+        (expect-failure "Should enforce cooldown"
+          "Zombie is still cooling down!"
+          (battle alice-id bob-id)))
+      (print "Not enough zombies for battle"))))
+(commit-tx)
+
+(print "")
+(print "🎉 Lesson 2 complete! You've learned:")
+(print "✅ Zombie feeding mechanics")
+(print "✅ Battle system with power calculations")
+(print "✅ Ownership verification")
+(print "✅ Cooldown management")
+(print "✅ Leveling and stats tracking")

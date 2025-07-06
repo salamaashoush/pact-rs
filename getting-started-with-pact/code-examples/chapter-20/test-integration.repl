@@ -1,0 +1,269 @@
+;; test-integration.repl
+;; Integration test for complete DeFi protocol
+
+(begin-tx "Setup environment")
+
+(env-data {
+  "defi-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  },
+  "oracle-source": {
+    "keys": ["oracle-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+
+;; Define keysets
+(define-keyset 'defi-admin (read-keyset "defi-admin"))
+(define-keyset 'oracle-source (read-keyset "oracle-source"))
+
+;; Mock coin module
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defun details:object (account:string)
+    { "account": account
+    , "balance": 100000.0
+    , "guard": (read-keyset "defi-admin") })
+)
+
+;; Load all modules
+(load "defi-token.pact")
+(load "price-oracle.pact")
+(load "lending-pool.pact")
+(load "liquidation.pact")
+(load "yield-farming.pact")
+
+;; Initialize
+(defi-token.init)
+(price-oracle.init)
+
+(commit-tx)
+
+;; Setup Oracle and Assets
+(begin-tx "Configure protocol")
+
+(env-keys ["admin-key"])
+
+;; Authorize oracle source
+(price-oracle.authorize-source "chainlink" (read-keyset "oracle-source"))
+
+;; Configure lending assets with oracle integration
+(lending-pool.add-asset "ETH" 0.75 0.80 0.05 2500.0)
+(lending-pool.add-asset "USDC" 0.80 0.85 0.025 1.0)
+(lending-pool.add-asset "BTC" 0.70 0.75 0.07 42000.0)
+
+;; Update prices via oracle
+(env-keys ["oracle-key"])
+(price-oracle.update-price "chainlink" "ETH" 2500.0 0.99)
+(price-oracle.update-price "chainlink" "BTC" 42000.0 0.98)
+(price-oracle.update-price "chainlink" "USDC" 1.0 1.0)
+
+(commit-tx)
+
+;; Create User Accounts
+(begin-tx "Setup users")
+
+(env-keys ["admin-key"])
+(env-data { "user-ks": { "keys": ["admin-key"], "pred": "keys-all" }})
+
+;; Create DeFi token accounts
+(defi-token.create-account "alice" (read-keyset "user-ks"))
+(defi-token.create-account "bob" (read-keyset "user-ks"))
+(defi-token.create-account "charlie" (read-keyset "user-ks"))
+
+(commit-tx)
+
+;; Lending Scenario
+(begin-tx "Lending operations")
+
+;; Alice deposits 10 ETH ($25,000 value)
+(expect "Alice deposits ETH"
+  "Deposited 10.0 ETH"
+  (lending-pool.deposit "alice" "ETH" 10.0))
+
+;; Bob deposits 50,000 USDC
+(expect "Bob deposits USDC"
+  "Deposited 50000.0 USDC"
+  (lending-pool.deposit "bob" "USDC" 50000.0))
+
+;; Alice borrows 15,000 USDC against ETH
+;; Collateral: $25,000 * 0.75 LTV = $18,750 borrowing power
+(expect "Alice borrows"
+  "Borrowed 15000.0 USDC"
+  (lending-pool.borrow "alice" "USDC" 15000.0))
+
+;; Check Alice's health factor
+;; Collateral: $25,000, Liquidation threshold: 80%
+;; Weighted collateral: $25,000 * 0.80 = $20,000
+;; Debt: $15,000
+;; Health factor: $20,000 / $15,000 = 1.33
+(let ((health (lending-pool.get-health-factor "alice")))
+  (expect "Health factor correct"
+    true
+    (and (> health 1.3) (< health 1.4))))
+
+(commit-tx)
+
+;; Yield Farming
+(begin-tx "Setup yield farming")
+
+;; Create staking pool for aToken holders
+(expect "Farming pool created"
+  "Pool USDC-FARM created"
+  (yield-farming.create-pool 
+    "USDC-FARM"     ;; Pool ID
+    "aUSDC"         ;; Stake aUSDC tokens
+    "FARM"          ;; Earn FARM tokens
+    1.0             ;; 1 FARM per second
+    604800))        ;; 7 days
+
+;; Bob stakes his aUSDC tokens
+(expect "Bob stakes"
+  "Staked 30000.0 tokens"
+  (yield-farming.stake "bob" "USDC-FARM" 30000.0))
+
+;; Check pending rewards (immediate check = 0)
+(expect "Initial rewards"
+  0.0
+  (yield-farming.get-pending-rewards "bob" "USDC-FARM"))
+
+(commit-tx)
+
+;; Price Movement and Liquidation
+(begin-tx "Price crash scenario")
+
+(env-keys ["oracle-key"])
+
+;; ETH price crashes to $1500
+(price-oracle.update-price "chainlink" "ETH" 1500.0 0.98)
+
+;; Update lending pool prices
+(env-keys ["admin-key"])
+(update lending-pool.asset-config "ETH" { "price": 1500.0 })
+
+;; Alice's new position:
+;; Collateral: 10 ETH * $1500 = $15,000
+;; Weighted: $15,000 * 0.80 = $12,000
+;; Debt: $15,000
+;; Health factor: $12,000 / $15,000 = 0.8 (LIQUIDATABLE!)
+
+(let ((health (lending-pool.calculate-health-factor "alice")))
+  (expect "Alice liquidatable"
+    true
+    (< health 1.0)))
+
+;; Charlie performs liquidation
+(let ((result (liquidation.liquidate-position 
+                "charlie"    ;; Liquidator
+                "alice"      ;; User being liquidated
+                "ETH"        ;; Collateral to seize
+                "USDC"       ;; Debt to repay
+                7500.0)))    ;; Repay half the debt (max 50%)
+  
+  (expect "Liquidation successful"
+    true
+    (contains "liquidation-id" result))
+  
+  (expect "Correct debt covered"
+    7500.0
+    (at 'debt-covered result)))
+
+(commit-tx)
+
+;; Complex DeFi Operations
+(begin-tx "Advanced DeFi operations")
+
+;; Check Alice's position after liquidation
+(let ((alice-data (lending-pool.get-user-data "alice")))
+  (expect "Alice debt reduced"
+    7500.0
+    (at 'total-debt alice-data))
+  
+  (expect "Alice health improved"
+    true
+    (> (at 'health-factor alice-data) 1.0)))
+
+;; Alice repays remaining debt
+(expect "Alice repays"
+  "Repaid 7500.0 USDC"
+  (lending-pool.repay "alice" "USDC" 7500.0))
+
+;; Bob claims farming rewards
+(expect "Bob claims"
+  true
+  (contains "Claimed" (yield-farming.claim-rewards "bob" "USDC-FARM")))
+
+;; Calculate protocol TVL
+(let* ((eth-deposits (* 10.0 1500.0))     ;; Remaining ETH
+       (usdc-deposits 50000.0)            ;; USDC deposits
+       (total-tvl (+ eth-deposits usdc-deposits)))
+  
+  (expect "TVL calculation"
+    true
+    (> total-tvl 60000.0)))
+
+(commit-tx)
+
+;; Oracle Features
+(begin-tx "Test oracle features")
+
+;; Get TWAP (Time-Weighted Average Price)
+(let ((eth-twap (price-oracle.get-twap "ETH" 1)))
+  (expect "TWAP available"
+    true
+    (> eth-twap 0.0)))
+
+;; Multi-asset price query
+(let ((prices (price-oracle.get-prices ["ETH" "BTC" "USDC"])))
+  (expect "Got 3 prices"
+    3
+    (length prices)))
+
+;; Exchange rate calculation
+(let ((eth-btc-rate (price-oracle.get-exchange-rate "ETH" "BTC")))
+  (expect "ETH/BTC rate"
+    true
+    (and (> eth-btc-rate 0.0) (< eth-btc-rate 1.0))))
+
+;; Portfolio valuation
+(let ((portfolio (price-oracle.calculate-values 
+                  [{ "asset": "ETH", "amount": 5.0 }
+                   { "asset": "BTC", "amount": 0.5 }
+                   { "asset": "USDC", "amount": 10000.0 }])))
+  
+  (expect "Portfolio valued"
+    true
+    (> (at 'total portfolio) 30000.0)))
+
+(commit-tx)
+
+(print "DeFi integration tests completed successfully!")
+
+;; Summary Statistics
+(begin-tx "Protocol statistics")
+
+;; Get liquidation stats
+(let ((liquidations (liquidation.get-recent-liquidations 24)))
+  (expect "Recent liquidations"
+    true
+    (>= (length liquidations) 1)))
+
+;; Get farming pool info
+(let ((pool-info (yield-farming.get-pool-info "USDC-FARM")))
+  (expect "Pool has stakes"
+    true
+    (> (at 'total-staked pool-info) 0.0)))
+
+;; Interest rate info
+(let ((supply-apy (defi-token.get-supply-apy)))
+  (expect "Supply APY set"
+    true
+    (> supply-apy 0.0)))
+
+(commit-tx)
+
+(print "All integration tests passed!")

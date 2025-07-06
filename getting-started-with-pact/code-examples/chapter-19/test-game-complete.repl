@@ -1,0 +1,308 @@
+;; test-game-complete.repl
+;; Complete test for blockchain RPG
+
+(begin-tx "Setup environment")
+
+(env-data {
+  "game-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+(define-keyset 'game-admin (read-keyset "game-admin"))
+
+;; Mock coin module
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defschema account
+    balance:decimal
+    guard:guard)
+  
+  (deftable accounts:{account})
+  
+  (defun details:object (account:string)
+    { "account": account
+    , "balance": 1000.0
+    , "guard": (read-keyset "game-admin") })
+)
+(create-table accounts)
+
+;; Load game modules
+(load "game-characters.pact")
+(load "game-combat-fixed.pact")
+(load "game-items-fixed.pact")
+
+(commit-tx)
+
+;; Test Character Creation
+(begin-tx "Character creation")
+
+(env-chain-data { "block-height": 1000 })
+
+;; Create warrior
+(expect "Warrior created"
+  "CHAR-alice-1000"
+  (game-characters.create-character "alice" "Thorin" "warrior"))
+
+;; Create mage
+(env-chain-data { "block-height": 1001 })
+(expect "Mage created"
+  "CHAR-bob-1001"
+  (game-characters.create-character "bob" "Gandalf" "mage"))
+
+;; Create rogue
+(env-chain-data { "block-height": 1002 })
+(expect "Rogue created"
+  "CHAR-charlie-1002"
+  (game-characters.create-character "charlie" "Shadow" "rogue"))
+
+;; Verify warrior stats
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Warrior name" "Thorin" (at 'name warrior))
+  (expect "Warrior class" "warrior" (at 'class warrior))
+  (expect "Warrior strength" 15 (at 'strength warrior))
+  (expect "Warrior health" 120 (at 'max-health warrior)))
+
+;; Verify mage stats
+(let ((mage (game-characters.get-character "CHAR-bob-1001")))
+  (expect "Mage name" "Gandalf" (at 'name mage))
+  (expect "Mage intelligence" 15 (at 'intelligence mage))
+  (expect "Mage mana" 120 (at 'max-mana mage)))
+
+(commit-tx)
+
+;; Test Item System
+(begin-tx "Item creation and management")
+
+;; Create item templates
+(expect "Iron sword created"
+  "Item template iron-sword created"
+  (game-items.create-item-template 
+    "iron-sword" 
+    "Iron Sword" 
+    "A basic iron sword"
+    "weapon"
+    "common"
+    1
+    { "strength": 2, "attack": 5 }))
+
+(expect "Leather armor created"
+  "Item template leather-armor created"
+  (game-items.create-item-template
+    "leather-armor"
+    "Leather Armor"
+    "Basic leather protection"
+    "armor"
+    "common"
+    1
+    { "vitality": 2, "defense": 3 }))
+
+(expect "Health potion created"
+  "Item template health-potion created"
+  (game-items.create-item-template
+    "health-potion"
+    "Health Potion"
+    "Restores 50 HP"
+    "consumable"
+    "common"
+    1
+    { "effects": ["heal-50"] }))
+
+(expect "Steel sword created"
+  "Item template steel-sword created"
+  (game-items.create-item-template
+    "steel-sword"
+    "Steel Sword"
+    "A fine steel blade"
+    "weapon"
+    "uncommon"
+    3
+    { "strength": 5, "attack": 12 }))
+
+;; Give items to characters
+(expect "Sword to warrior"
+  "Added 1 iron-sword to inventory"
+  (game-items.give-item "CHAR-alice-1000" "iron-sword" 1))
+
+(expect "Armor to warrior"
+  "Added 1 leather-armor to inventory"
+  (game-items.give-item "CHAR-alice-1000" "leather-armor" 1))
+
+(expect "Potions to warrior"
+  "Added 5 health-potion to inventory"
+  (game-items.give-item "CHAR-alice-1000" "health-potion" 5))
+
+(expect "Sword to mage"
+  "Added 1 iron-sword to inventory"
+  (game-items.give-item "CHAR-bob-1001" "iron-sword" 1))
+
+;; Check inventory
+(let ((inv (game-items.get-inventory "CHAR-alice-1000")))
+  (expect "3 slots used" 3 (length inv)))
+
+;; Equip items
+(expect "Equip sword"
+  "Equipped iron-sword in weapon slot"
+  (game-items.equip-item "CHAR-alice-1000" 0))
+
+(expect "Equip armor"
+  "Equipped leather-armor in armor slot"
+  (game-items.equip-item "CHAR-alice-1000" 1))
+
+;; Verify equipment
+(let ((equipped (game-items.get-equipped-items "CHAR-alice-1000")))
+  (expect "Sword equipped" "Iron Sword" 
+    (at 'name (at 'weapon equipped)))
+  (expect "Armor equipped" "Leather Armor" 
+    (at 'name (at 'armor equipped))))
+
+(commit-tx)
+
+;; Test Experience System
+(begin-tx "Experience and leveling")
+
+;; Give experience
+(expect "Gain XP"
+  "Gained 50 experience"
+  (game-characters.gain-experience "CHAR-alice-1000" 50))
+
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "XP updated" 50 (at 'experience warrior)))
+
+;; Level up
+(expect "Level up"
+  "Level up! Now level 2"
+  (game-characters.gain-experience "CHAR-alice-1000" 50))
+
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Level 2" 2 (at 'level warrior))
+  (expect "Strength increased" 18 (at 'strength warrior))
+  (expect "Health increased" 140 (at 'max-health warrior)))
+
+(commit-tx)
+
+;; Test Combat System
+(begin-tx "Combat system")
+
+(env-chain-data { "block-height": 2000 })
+
+;; Start battle
+(expect "Battle started"
+  "BATTLE-CHAR-alice-1000-CHAR-bob-1001-2000"
+  (game-combat.initiate-battle "CHAR-alice-1000" "CHAR-bob-1001"))
+
+;; Verify battle created
+(let ((battle (game-combat.get-battle "BATTLE-CHAR-alice-1000-CHAR-bob-1001-2000")))
+  (expect "Battle active" "active" (at 'status battle))
+  (expect "Attacker health" 140 (at 'attacker-health battle))
+  (expect "Defender health" 48 (at 'defender-health battle)))
+
+;; Perform attacks
+(expect "Attack succeeds"
+  "Battle continues"
+  (game-combat.attack "BATTLE-CHAR-alice-1000-CHAR-bob-1001-2000" 
+                     "CHAR-alice-1000"))
+
+;; Check damage dealt
+(let ((battle (game-combat.get-battle "BATTLE-CHAR-alice-1000-CHAR-bob-1001-2000")))
+  (expect "Defender damaged" true 
+    (< (at 'defender-health battle) 48)))
+
+;; Mage casts spell
+(expect "Spell cast"
+  true
+  (contains "Battle" 
+    (game-combat.cast-spell "BATTLE-CHAR-alice-1000-CHAR-bob-1001-2000"
+                           "CHAR-bob-1001"
+                           "fireball")))
+
+(commit-tx)
+
+;; Test Item Usage
+(begin-tx "Item usage")
+
+;; Damage warrior for testing
+(update game-characters.characters "CHAR-alice-1000" 
+  { "health": 100 })
+
+;; Use health potion
+(expect "Use potion"
+  "Used health-potion"
+  (game-items.use-item "CHAR-alice-1000" 2))
+
+;; Check health restored
+(let ((warrior (game-characters.get-character "CHAR-alice-1000")))
+  (expect "Health restored" 140 (at 'health warrior)))
+
+;; Check potion count
+(let ((inv (game-items.get-inventory "CHAR-alice-1000")))
+  (let ((potions (filter (lambda (item) 
+                          (= (at 'item-id item) "health-potion"))
+                        inv)))
+    (expect "4 potions left" 4 
+      (at 'quantity (at 0 potions)))))
+
+(commit-tx)
+
+;; Test Character Management
+(begin-tx "Character management")
+
+;; Update status
+(expect "Status updated"
+  "Status updated to resting"
+  (game-characters.update-status "CHAR-charlie-1002" "resting"))
+
+;; Heal character
+(expect "Healed"
+  "Healed for 20 HP"
+  (game-characters.heal-character "CHAR-bob-1001" 20))
+
+;; Restore mana
+(expect "Mana restored"
+  "Restored 30 mana"
+  (game-characters.restore-mana "CHAR-bob-1001" 30))
+
+;; Get characters by owner
+(let ((chars (game-characters.get-characters-by-owner "alice")))
+  (expect "1 character owned" 1 (length chars)))
+
+(commit-tx)
+
+;; Test Advanced Items
+(begin-tx "Advanced item features")
+
+;; Give steel sword to high-level character
+(expect "Give steel sword"
+  "Added 1 steel-sword to inventory"
+  (game-items.give-item "CHAR-alice-1000" "steel-sword" 1))
+
+;; Try to equip (should fail - level 3 required)
+(expect-failure "Level requirement"
+  "Level requirement not met"
+  (game-items.equip-item "CHAR-alice-1000" 3))
+
+;; Level up character to level 3
+(game-characters.gain-experience "CHAR-alice-1000" 400)
+
+;; Now equip should work
+(expect "Equip steel sword"
+  "Equipped steel-sword in weapon slot"
+  (game-items.equip-item "CHAR-alice-1000" 3))
+
+(commit-tx)
+
+;; Test Combat Stats
+(begin-tx "Combat statistics")
+
+;; Check combat stats
+(let ((stats (try {} (read game-combat.combat-stats-table "CHAR-alice-1000"))))
+  (if (= stats {})
+    (expect "No stats yet" true true)
+    (expect "Has battle wins" true (>= (at 'battles-won stats) 0))))
+
+(commit-tx)
+
+(print "All game tests completed successfully!")

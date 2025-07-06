@@ -1,0 +1,323 @@
+;; test-game-full.repl
+;; Complete test for all game modules
+
+(begin-tx "Setup environment")
+
+(env-data {
+  "game-admin": {
+    "keys": ["admin-key"],
+    "pred": "keys-all"
+  }
+})
+
+(env-keys ["admin-key"])
+(define-keyset 'game-admin (read-keyset "game-admin"))
+
+;; Mock coin module
+(module coin GOVERNANCE
+  (defcap GOVERNANCE () true)
+  
+  (defschema account
+    balance:decimal
+    guard:guard)
+  
+  (deftable accounts:{account})
+  
+  (defun details:object (account:string)
+    { "account": account
+    , "balance": 1000.0
+    , "guard": (read-keyset "game-admin") })
+)
+(create-table accounts)
+
+;; Load all game modules
+(load "game-characters.pact")
+(load "game-combat-fixed.pact")
+(load "game-items-fixed.pact")
+(load "game-dungeons.pact")
+(load "game-quests.pact")
+
+(commit-tx)
+
+;; Setup Game Data
+(begin-tx "Setup game data")
+
+;; Create monsters
+(game-dungeons.create-monster "goblin-1" "Weak Goblin" 1 20 5 2 10
+  [{ "item-id": "health-potion", "drop-rate": 0.3 }])
+
+(game-dungeons.create-monster "goblin-3" "Goblin Warrior" 3 50 12 5 25
+  [{ "item-id": "iron-sword", "drop-rate": 0.2 }
+   { "item-id": "health-potion", "drop-rate": 0.5 }])
+
+(game-dungeons.create-monster "dragon-boss" "Ancient Dragon" 10 500 50 30 1000
+  [{ "item-id": "legendary-sword", "drop-rate": 1.0 }
+   { "item-id": "dragon-scale", "drop-rate": 1.0 }])
+
+;; Create dungeons
+(game-dungeons.create-dungeon 
+  "goblin-cave"
+  "Goblin Cave"
+  "A dark cave infested with goblins"
+  1      ;; Difficulty
+  1      ;; Min level
+  3      ;; Floors
+  "goblin-3"  ;; Boss
+  { "experience": 100
+  , "items": [{ "item-id": "iron-sword", "quantity": 1 }] })
+
+(game-dungeons.create-dungeon
+  "dragon-lair"
+  "Dragon's Lair"
+  "The ancient dragon's domain"
+  10     ;; Difficulty
+  5      ;; Min level
+  5      ;; Floors
+  "dragon-boss"
+  { "experience": 5000
+  , "items": [{ "item-id": "legendary-sword", "quantity": 1 }] })
+
+;; Create items
+(game-items.create-item-template 
+  "health-potion" "Health Potion" "Restores 50 HP"
+  "consumable" "common" 1 { "effects": ["heal-50"] })
+
+(game-items.create-item-template
+  "iron-sword" "Iron Sword" "A basic iron sword"
+  "weapon" "common" 1 { "strength": 2, "attack": 5 })
+
+(game-items.create-item-template
+  "legendary-sword" "Legendary Sword" "A blade of legends"
+  "weapon" "legendary" 5 { "strength": 10, "attack": 30 })
+
+(game-items.create-item-template
+  "dragon-scale" "Dragon Scale" "Scale from an ancient dragon"
+  "material" "legendary" 5 {})
+
+;; Create quests
+(game-quests.create-quest
+  "tutorial-1"
+  "First Steps"
+  "Learn the basics of combat"
+  "main"
+  [{ "type": "defeat-monsters", "target": "goblin", "count": 3 }]
+  { "min-level": 1 }
+  { "experience": 50
+  , "items": [{ "item-id": "health-potion", "quantity": 3 }] }
+  false)
+
+(game-quests.create-quest
+  "daily-monster-hunt"
+  "Daily Monster Hunt"
+  "Defeat 5 monsters today"
+  "daily"
+  [{ "type": "defeat-any", "count": 5 }]
+  { "min-level": 1 }
+  { "experience": 100 }
+  true)
+
+(game-quests.create-quest
+  "dragon-slayer"
+  "Dragon Slayer"
+  "Defeat the ancient dragon"
+  "main"
+  [{ "type": "defeat-boss", "target": "dragon-boss", "count": 1 }]
+  { "min-level": 5 }
+  { "experience": 5000
+  , "title": "Dragon Slayer" }
+  false)
+
+(commit-tx)
+
+;; Test Character Creation and Progression
+(begin-tx "Character creation and progression")
+
+(env-chain-data { "block-height": 1000 })
+
+;; Create main character
+(expect "Hero created"
+  "CHAR-hero-1000"
+  (game-characters.create-character "hero" "Aldric" "warrior"))
+
+;; Level up the character
+(game-characters.gain-experience "CHAR-hero-1000" 100)
+(game-characters.gain-experience "CHAR-hero-1000" 300)
+(game-characters.gain-experience "CHAR-hero-1000" 900)
+
+(let ((hero (game-characters.get-character "CHAR-hero-1000")))
+  (expect "Hero level 4" 4 (at 'level hero))
+  (expect "Hero strength increased" true (> (at 'strength hero) 15)))
+
+(commit-tx)
+
+;; Test Quest System
+(begin-tx "Quest system")
+
+;; Accept tutorial quest
+(expect "Quest accepted"
+  "Quest tutorial-1 accepted"
+  (game-quests.accept-quest "CHAR-hero-1000" "tutorial-1"))
+
+;; Check active quests
+(let ((active (game-quests.get-active-quests "CHAR-hero-1000")))
+  (expect "1 active quest" 1 (length active)))
+
+;; Complete objective
+(expect "Objective completed"
+  "Quest First Steps completed!"
+  (game-quests.update-objective "CHAR-hero-1000" "tutorial-1" 0))
+
+;; Check quest rewards received
+(let ((hero (game-characters.get-character "CHAR-hero-1000")))
+  (expect "Experience from quest" true (> (at 'experience hero) 0)))
+
+;; Accept daily quest
+(expect "Daily quest accepted"
+  "Quest daily-monster-hunt accepted"
+  (game-quests.accept-quest "CHAR-hero-1000" "daily-monster-hunt"))
+
+(commit-tx)
+
+;; Test Dungeon System
+(begin-tx "Dungeon exploration")
+
+;; Enter goblin cave
+(expect "Dungeon entered"
+  "RUN-CHAR-hero-1000-goblin-cave-1000"
+  (game-dungeons.enter-dungeon "CHAR-hero-1000" "goblin-cave"))
+
+;; Fight monsters
+(expect "Fight action"
+  true
+  (contains "Victory" 
+    (game-dungeons.explore-floor 
+      "RUN-CHAR-hero-1000-goblin-cave-1000" "fight")))
+
+;; Continue exploring
+(game-dungeons.explore-floor 
+  "RUN-CHAR-hero-1000-goblin-cave-1000" "fight")
+(game-dungeons.explore-floor 
+  "RUN-CHAR-hero-1000-goblin-cave-1000" "fight")
+
+;; Check dungeon progress
+(let ((run (game-dungeons.get-active-run "CHAR-hero-1000")))
+  (expect "Monsters defeated" true 
+    (> (at 'monsters-defeated run) 0)))
+
+(commit-tx)
+
+;; Test Item Management
+(begin-tx "Item and equipment")
+
+;; Give items from dungeon loot
+(game-items.give-item "CHAR-hero-1000" "iron-sword" 1)
+(game-items.give-item "CHAR-hero-1000" "health-potion" 5)
+
+;; Equip sword
+(expect "Sword equipped"
+  "Equipped iron-sword in weapon slot"
+  (game-items.equip-item "CHAR-hero-1000" 0))
+
+;; Use health potion
+(update game-characters.characters "CHAR-hero-1000" { "health": 150 })
+(expect "Potion used"
+  "Used health-potion"
+  (game-items.use-item "CHAR-hero-1000" 1))
+
+;; Check inventory
+(let ((inv (game-items.get-inventory "CHAR-hero-1000")))
+  (expect "Items in inventory" true (> (length inv) 0)))
+
+(commit-tx)
+
+;; Test Combat System
+(begin-tx "Combat system")
+
+;; Create opponent
+(env-chain-data { "block-height": 2000 })
+(game-characters.create-character "villain" "Morgrim" "mage")
+
+;; Start PvP battle
+(expect "Battle started"
+  "BATTLE-CHAR-hero-1000-CHAR-villain-2000-2000"
+  (game-combat.initiate-battle "CHAR-hero-1000" "CHAR-villain-2000"))
+
+;; Hero attacks
+(expect "Attack successful"
+  "Battle continues"
+  (game-combat.attack 
+    "BATTLE-CHAR-hero-1000-CHAR-villain-2000-2000" 
+    "CHAR-hero-1000"))
+
+;; Villain casts spell
+(expect "Spell cast"
+  true
+  (contains "Battle" 
+    (game-combat.cast-spell 
+      "BATTLE-CHAR-hero-1000-CHAR-villain-2000-2000"
+      "CHAR-villain-2000"
+      "fireball")))
+
+(commit-tx)
+
+;; Test Achievement System
+(begin-tx "Achievements")
+
+;; Check achievements
+(let ((achievements (game-quests.get-achievements "CHAR-hero-1000")))
+  (expect "Has achievements" true 
+    (>= (length achievements) 1)))
+
+;; Unlock special achievement
+(expect "Achievement unlocked"
+  "Achievement unlocked: Dungeon Explorer"
+  (game-quests.unlock-achievement 
+    "CHAR-hero-1000" 
+    "Dungeon Explorer" 
+    "Clear your first dungeon"))
+
+(commit-tx)
+
+;; Test Advanced Dungeon Features
+(begin-tx "Advanced dungeons")
+
+;; Level up hero to access dragon lair
+(game-characters.gain-experience "CHAR-hero-1000" 2000)
+
+(let ((hero (game-characters.get-character "CHAR-hero-1000")))
+  (expect "Hero level 5+" true (>= (at 'level hero) 5)))
+
+;; Enter dragon's lair
+(expect "Dragon lair entered"
+  true
+  (contains "RUN-" 
+    (game-dungeons.enter-dungeon "CHAR-hero-1000" "dragon-lair")))
+
+(commit-tx)
+
+;; Summary and Stats
+(begin-tx "Game summary")
+
+;; Character summary
+(let ((hero (game-characters.get-character "CHAR-hero-1000")))
+  (print (format "Hero: {} (Level {})" 
+                [(at 'name hero) (at 'level hero)]))
+  (print (format "Stats: STR {} INT {} AGI {} VIT {}" 
+                [(at 'strength hero) 
+                 (at 'intelligence hero)
+                 (at 'agility hero)
+                 (at 'vitality hero)])))
+
+;; Quest summary
+(let ((completed (select game-quests.quest-progress-table 
+                        (and? (where 'character-id (= "CHAR-hero-1000"))
+                             (where 'status (= "completed"))))))
+  (print (format "Quests completed: {}" [(length completed)])))
+
+;; Achievement summary
+(let ((achievements (game-quests.get-achievements "CHAR-hero-1000")))
+  (print (format "Achievements earned: {}" [(length achievements)])))
+
+(commit-tx)
+
+(print "Complete game system test finished successfully!")
